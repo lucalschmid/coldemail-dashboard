@@ -44,8 +44,7 @@ const DEFAULT_CLIENT = 'Unassigned';
 
 // ── Config ───────────────────────────────────────────────────
 const API_KEY            = () => PropertiesService.getScriptProperties().getProperty('INSTANTLY_API_KEY');
-const BASE_V2            = 'https://api.instantly.ai/api/v2';  // campaign list
-const BASE_V1            = 'https://api.instantly.ai/api/v1';  // analytics (small responses)
+const BASE_V2            = 'https://api.instantly.ai/api/v2';
 const LOOKBACK_SPARKLINE = 14;
 const LOOKBACK_STATS     = 7;
 
@@ -77,57 +76,47 @@ function doGet(e) {
 
 // ── Main builder ─────────────────────────────────────────────
 function buildDashboardData() {
-  const key     = API_KEY();
   const today   = new Date();
   const end     = fmtDate(today);
   const start7  = fmtDate(daysAgo(today, LOOKBACK_STATS));
   const start14 = fmtDate(daysAgo(today, LOOKBACK_SPARKLINE));
   const opts    = fetchOpts();
 
-  const campaigns = fetchCampaigns(key, opts);
+  const campaigns = fetchCampaigns(opts);
   if (!campaigns.length) return { generated_at: new Date().toISOString(), campaigns: [] };
 
-  // v1 analytics: clean small JSON, no bandwidth issues
-  // summary = 7d totals, daily = 14d sparkline
-  const v1Base      = `${BASE_V1}/analytics/campaign`;
-  const summaryReqs = campaigns.map(c => ({
-    url: `${v1Base}/summary?api_key=${key}&campaign_id=${c.id}&start_date=${start7}&end_date=${end}`,
-    muteHttpExceptions: true,
-  }));
-  const dailyReqs = campaigns.map(c => ({
-    url: `${v1Base}/count?api_key=${key}&campaign_id=${c.id}&start_date=${start14}&end_date=${end}`,
-    muteHttpExceptions: true,
-  }));
+  // Sequential fetching — avoids bandwidth quota from parallel fetchAll
+  const result = campaigns.map(function(c) {
+    // Summary: confirmed working, 688 bytes per campaign
+    const sumUrl  = BASE_V2 + '/campaigns/analytics?id=' + c.id + '&start_date=' + start7 + '&end_date=' + end;
+    const sumRes  = UrlFetchApp.fetch(sumUrl, opts);
+    const sumRaw  = safeJson(sumRes);
+    const s       = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
 
-  const summaryRes = UrlFetchApp.fetchAll(summaryReqs);
-  const dailyRes   = UrlFetchApp.fetchAll(dailyReqs);
-
-  const result = campaigns.map((c, i) => {
-    // v1 summary returns an array — take first element
-    const summaryRaw = safeJson(summaryRes[i]);
-    const s          = Array.isArray(summaryRaw) ? (summaryRaw[0] || {}) : (summaryRaw || {});
-    // v1 daily returns a plain array
-    const dailyRaw   = safeJson(dailyRes[i]);
-    const daily      = Array.isArray(dailyRaw) ? dailyRaw : (dailyRaw.data || []);
+    // Daily: fetch 14d for sparkline — small delay to be safe
+    const dayUrl  = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + c.id + '&start_date=' + start14 + '&end_date=' + end;
+    const dayRes  = UrlFetchApp.fetch(dayUrl, opts);
+    const dayRaw  = safeJson(dayRes);
+    const daily   = Array.isArray(dayRaw) ? dayRaw : (dayRaw.items || dayRaw.data || []);
 
     const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
     const lastSendDate = getLastSendDate(daily);
-    const totalLeads   = num(s.leads_count     || s.total_leads);
-    const contacted    = num(s.contacted_count || s.contacted);
+    const totalLeads   = num(s.leads_count);
+    const contacted    = num(s.contacted_count);
 
     return {
       id:           c.id,
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      sends7d:      num(s.emails_sent_count || s.sent_count || s.sent),
-      replies7d:    num(s.reply_count_unique || s.reply_count || s.replied),
+      sends7d:      num(s.emails_sent_count),
+      replies7d:    num(s.reply_count_unique),
       posReplies7d: 0,
       bookings7d:   0,
       totalLeads,
       contacted,
       leadsLeft:    Math.max(0, totalLeads - contacted),
-      bounced:      num(s.bounced_count || s.bounced),
+      bounced:      num(s.bounced_count),
       lastSendDate,
       sparkline,
     };
@@ -137,7 +126,7 @@ function buildDashboardData() {
 }
 
 // ── Campaign list ─────────────────────────────────────────────
-function fetchCampaigns(key, opts) {
+function fetchCampaigns(opts) {
   const all = [];
   let startingAfter = null;
 
@@ -207,17 +196,16 @@ function testListCampaigns() {
 
 function testAnalytics() {
   const TEST_ID = 'efecb243-a7ba-4968-bd9d-46a2c4ef246a';
-  const key     = API_KEY();
+  const opts    = fetchOpts();
   const today   = fmtDate(new Date());
   const start7  = fmtDate(daysAgo(new Date(), 7));
   const start14 = fmtDate(daysAgo(new Date(), 14));
-  const base    = BASE_V1 + '/analytics/campaign';
 
-  const resSum = UrlFetchApp.fetch(`${base}/summary?api_key=${key}&campaign_id=${TEST_ID}&start_date=${start7}&end_date=${today}`, { muteHttpExceptions: true });
+  const resSum = UrlFetchApp.fetch(BASE_V2 + '/campaigns/analytics?id=' + TEST_ID + '&start_date=' + start7 + '&end_date=' + today, opts);
   Logger.log('SUMMARY HTTP ' + resSum.getResponseCode() + ': ' + resSum.getContentText());
 
-  const resDay = UrlFetchApp.fetch(`${base}/count?api_key=${key}&campaign_id=${TEST_ID}&start_date=${start14}&end_date=${today}`, { muteHttpExceptions: true });
-  Logger.log('DAILY HTTP ' + resDay.getResponseCode() + ': ' + resDay.getContentText());
+  const resDay = UrlFetchApp.fetch(BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + TEST_ID + '&start_date=' + start14 + '&end_date=' + today, opts);
+  Logger.log('DAILY HTTP ' + resDay.getResponseCode() + ' | ' + resDay.getContentText().length + ' bytes: ' + resDay.getContentText().substring(0, 600));
 }
 
 function testFullBuild() {
