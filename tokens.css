@@ -1,0 +1,267 @@
+/* ==========================================================================
+   Compound Scaling — Design Tokens
+   Colors, type, spacing. Editorial, restrained, premium.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,500;8..60,600;8..60,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
+
+:root {
+  /* ---------- Core palette (matched to live compoundscaling.com) ---------- */
+  --cream:        #F8F6F1;   /* near-white cream, primary background */
+  --cream-2:      #F1EEE8;   /* subtle tonal shift, alt surface */
+  --cream-3:      #E7E2D5;   /* divider tone */
+  --navy:         #0E1A2B;   /* primary text, dark surfaces */
+  --navy-2:       #15233A;   /* navy hover */
+  --navy-3:       #1C3148;   /* navy press */
+  --gold:         #C8A26A;   /* warmer, lighter gold from live site */
+  --gold-soft:    #B5895A;   /* gold hover */
+  --gold-tint:    #EFE2CC;   /* gold pill background, soft accent fills */
+
+  /* ---------- Neutrals (warm, biased toward cream) ---------- */
+  --ink-100:      #0D1B2A;   /* = navy */
+  --ink-80:       #324153;
+  --ink-60:       #5C6877;
+  --ink-40:       #8A93A0;
+  --ink-20:       #BDC3CC;
+  --ink-10:       #DDE0E6;
+  --ink-05:       #ECEEF1;
+
+  /* ---------- Semantic foreground/background ---------- */
+  --bg:           var(--cream);
+  --bg-alt:       var(--cream-2);
+  --bg-inverse:   var(--navy);
+  --fg:           var(--navy);
+  --fg-2:         var(--ink-80);   /* secondary text */
+  --fg-3:         var(--ink-60);   /* tertiary, captions */
+  --fg-mute:      var(--ink-40);   /* placeholder, deep mute */
+  --fg-inverse:   var(--cream);
+  --fg-inverse-2: #B7BDC6;
+  --accent:       var(--gold);
+  --accent-fg:    var(--navy);     /* gold sits on navy or near-navy */
+
+  /* ---------- Hairlines & borders ---------- */
+  --rule:         #D9D3C4;        /* on cream */
+  --rule-strong:  #B5AE9C;        /* on cream, stronger */
+  --rule-inverse: #243349;        /* on navy */
+  --border:       1px solid var(--rule);
+  --border-strong:1px solid var(--rule-strong);
+
+  /* ---------- Status (used sparingly) ---------- */
+  --positive:     #2F6A4E;        /* deep, editorial green */
+  --warning:      #B5832A;        /* aligned to gold family */
+  --critical:     #8A2A2A;        /* deep, restrained red */
+
+  /* ---------- Type families ---------- */
+  --serif:        'Source Serif 4', Georgia, 'Times New Roman', serif;  /* reserved for long-form / case study prose only */
+  --sans:         'Inter', 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;  /* primary, matches live site */
+  --display:      'Inter', 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;  /* hero + section headlines, sans (live site) */
+  --mono:         'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* ---------- Type scale (modular, generous) ---------- */
+  --fs-eyebrow:   12px;     /* small label, wide tracking */
+  --fs-caption:   13px;
+  --fs-body-sm:   14px;
+  --fs-body:      16px;
+  --fs-body-lg:   18px;
+  --fs-lead:      21px;     /* lead paragraph */
+  --fs-h6:        18px;
+  --fs-h5:        22px;
+  --fs-h4:        28px;
+  --fs-h3:        36px;
+  --fs-h2:        48px;
+  --fs-h1:        64px;
+  --fs-display:   88px;     /* hero / oversized metric */
+  --fs-metric:    120px;    /* case-study numerics */
+
+  /* ---------- Line heights ---------- */
+  --lh-tight:     1.05;
+  --lh-snug:      1.18;
+  --lh-normal:    1.45;
+  --lh-relaxed:   1.6;
+  --lh-loose:     1.75;
+
+  /* ---------- Tracking ---------- */
+  --tr-tight:     -0.02em;
+  --tr-display:   -0.025em;
+  --tr-normal:    0;
+  --tr-eyebrow:   0.18em;   /* small caps section labels */
+  --tr-label:     0.08em;
+
+  /* ---------- Weights ---------- */
+  --w-regular:    400;
+  --w-medium:     500;
+  --w-semibold:   600;
+
+  /* ---------- Spacing scale (4px base) ---------- */
+  --space-0:      0;
+  --space-1:      4px;
+  --space-2:      8px;
+  --space-3:      12px;
+  --space-4:      16px;
+  --space-5:      20px;
+  --space-6:      24px;
+  --space-8:      32px;
+  --space-10:     40px;
+  --space-12:     48px;
+  --space-16:     64px;
+  --space-20:     80px;
+  --space-24:     96px;
+  --space-32:     128px;
+
+  /* ---------- Radii (small, restrained) ---------- */
+  --r-none:       0;
+  --r-xs:         2px;
+  --r-sm:         4px;       /* max for buttons */
+  --r-md:         6px;       /* cards, inputs */
+  --r-card:       12px;      /* card radius, matches live site */
+  --r-btn:        10px;      /* button radius, slight pill */
+  --r-pill:       999px;     /* full pill, used for chips and CTAs */
+
+  /* ---------- Layout ---------- */
+  --measure:      68ch;      /* UI cap for line length */
+  --measure-prose:75ch;      /* editorial cap */
+  --container:    1200px;
+  --container-narrow: 880px;
+  --gutter:       32px;
+
+  /* ---------- Elevation ---------- */
+  /* The system avoids drop shadows. Use hairlines + tonal shifts. */
+  /* These are reserved exclusively for floating overlays (menu, tooltip). */
+  --shadow-overlay: 0 1px 2px rgba(13,27,42,0.04), 0 8px 24px rgba(13,27,42,0.08);
+  --shadow-modal:   0 1px 2px rgba(13,27,42,0.06), 0 16px 48px rgba(13,27,42,0.14);
+
+  /* ---------- Motion ---------- */
+  --ease-standard: cubic-bezier(0.32, 0.72, 0.32, 1);
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast:      120ms;
+  --dur-base:      180ms;
+  --dur-slow:      280ms;
+}
+
+/* ==========================================================================
+   Base / element styles
+   ========================================================================== */
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-relaxed);
+  font-weight: var(--w-regular);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--gold-tint); color: var(--navy); }
+
+/* ---------- Headlines (serif, editorial) ---------- */
+h1, h2, h3, h4 {
+  font-family: var(--display);
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: var(--tr-display);
+  line-height: var(--lh-tight);
+  margin: 0;
+  text-wrap: balance;
+}
+h1 { font-size: var(--fs-h1); line-height: 1.04; }
+h2 { font-size: var(--fs-h2); line-height: 1.06; }
+h3 { font-size: var(--fs-h3); line-height: 1.10; letter-spacing: var(--tr-tight); }
+h4 { font-size: var(--fs-h4); line-height: 1.18; letter-spacing: var(--tr-tight); }
+
+/* ---------- Sub-heads / UI titles (sans) ---------- */
+h5, h6 {
+  font-family: var(--sans);
+  font-weight: var(--w-medium);
+  color: var(--fg);
+  letter-spacing: -0.005em;
+  margin: 0;
+}
+h5 { font-size: var(--fs-h5); line-height: 1.30; }
+h6 { font-size: var(--fs-h6); line-height: 1.40; }
+
+/* ---------- Eyebrow / section label ---------- */
+.eyebrow,
+.label-eyebrow {
+  font-family: var(--sans);
+  font-size: var(--fs-eyebrow);
+  font-weight: var(--w-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tr-eyebrow);
+  color: var(--fg-3);
+}
+
+/* ---------- Body / prose ---------- */
+p {
+  margin: 0 0 1em 0;
+  max-width: var(--measure-prose);
+  text-wrap: pretty;
+}
+.lead {
+  font-family: var(--serif);
+  font-size: var(--fs-lead);
+  line-height: 1.45;
+  color: var(--fg);
+  font-weight: 400;
+}
+
+/* ---------- Display / metric numerics (serif, oversized) ---------- */
+.display { font-family: var(--serif); font-size: var(--fs-display); line-height: 1.0; letter-spacing: -0.03em; font-weight: 400; }
+.metric  { font-family: var(--serif); font-size: var(--fs-metric);  line-height: 0.95; letter-spacing: -0.035em; font-weight: 400; font-feature-settings: 'lnum' 1, 'tnum' 0; }
+
+/* ---------- Links ---------- */
+a {
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 1px solid var(--rule-strong);
+  transition: border-color var(--dur-base) var(--ease-standard), color var(--dur-base) var(--ease-standard);
+}
+a:hover { border-bottom-color: var(--gold); }
+a.gold-underline { border-bottom-color: var(--gold); }
+
+/* ---------- Code ---------- */
+code, pre, kbd {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+code { background: var(--cream-2); padding: 1px 5px; border-radius: var(--r-xs); }
+
+/* ---------- Hairline / divider ---------- */
+hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: var(--space-8) 0;
+}
+
+/* ---------- Small utilities ---------- */
+.muted   { color: var(--fg-3); }
+.gold    { color: var(--gold); }
+.serif   { font-family: var(--serif); }
+.sans    { font-family: var(--sans); }
+.mono    { font-family: var(--mono); }
+.tnum    { font-feature-settings: 'tnum' 1, 'lnum' 1; font-variant-numeric: tabular-nums; }
+
+/* ---------- Section label rule (Economist-style cap with rule) ---------- */
+.section-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: var(--w-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--gold-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-label::before {
+  content: '';
+  display: inline-block;
+  width: 24px;
+  height: 1px;
+  background: var(--gold);
+}
