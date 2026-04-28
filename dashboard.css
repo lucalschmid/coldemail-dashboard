@@ -631,6 +631,27 @@ html, body { margin: 0; padding: 0; }
 .csd-camprow.is-paused .stat-num { color: var(--d-fg-3); }
 
 .csd-camprow .gutter { color: var(--d-fg-mute); display: grid; place-items: center; }
+.csd-camprow-del {
+  display: none;
+  background: none;
+  border: none;
+  padding: 3px;
+  cursor: pointer;
+  color: var(--d-fg-mute);
+  border-radius: 4px;
+  line-height: 0;
+  transition: color 120ms, background 120ms;
+}
+.csd-camprow-del:hover { color: var(--d-critical); background: var(--d-critical-bg); }
+.csd-camprow:hover .csd-camprow-del { display: flex; }
+.csd-clientcard-actions {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.csd-clientcard-head:hover .csd-clientcard-actions { display: flex; }
+.csd-clientcard-edit-btn { display: flex; }
 
 .csd-camprow .name-cell { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .csd-camprow .name-cell .n {

@@ -76,15 +76,12 @@ function DayChart({ data, labels }) {
 }
 
 // ---------- Client group ----------
-function ClientGroup({ group, isOpen, onToggle, dayLabels }) {
+function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete }) {
   const flagPill = group.flagged > 0
     ? { cls: 'crit', txt: group.flagged + ' critical' }
     : group.warned > 0
     ? { cls: 'warn', txt: group.warned + ' warning' }
     : { cls: 'ok', txt: 'On benchmark' };
-  const stalePill = group.stale > 0
-    ? { cls: group.canRerun > 0 ? 'rerun' : 'idle', txt: group.canRerun > 0 ? group.canRerun + ' can rerun' : group.stale + ' idle' }
-    : null;
 
   const initial = group.client.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
 
@@ -117,8 +114,6 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels }) {
       React.createElement('div', { className: 'stat-spark' },
         React.createElement(Sparkline, { data: group.sparkline, sev: 0, accent: true, width: 100, height: 28 })),
       React.createElement('div', { className: 'pill-stack' },
-        stalePill && React.createElement('span', { className: 'flag-pill ' + stalePill.cls },
-          React.createElement('span', { className: 'dot' }), stalePill.txt),
         React.createElement('span', { className: 'flag-pill ' + flagPill.cls },
           React.createElement('span', { className: 'dot' }), flagPill.txt))),
     // Body
@@ -134,18 +129,28 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels }) {
         React.createElement('span', null, 'Runway'),
         React.createElement('span', { className: 'right' }, 'Trend')),
       // Campaign rows
-      group.campaigns.map((c) => React.createElement(CampaignRow, { key: c.id, campaign: c }))
+      group.campaigns.map((c) => React.createElement(CampaignRow, { key: c.id, campaign: c, onDelete }))
     )
   );
 }
 
 // ---------- Campaign row ----------
-function CampaignRow({ campaign: c }) {
+function CampaignRow({ campaign: c, onDelete }) {
   const replyRate = c.sends7d > 0 ? (c.replies7d / c.sends7d) : null;
-  return React.createElement('div', { className: 'csd-camprow' + (c.status !== 'Active' ? ' is-paused' : '') + (c.staleSev > 0 ? ' is-idle' : '') + (c.canRerun ? ' can-rerun' : '') },
+  return React.createElement('div', { className: 'csd-camprow' + (c.status !== 'Active' ? ' is-paused' : '') + (c.staleSev > 0 ? ' is-idle' : '') },
     React.createElement('span', { className: 'gutter' },
-      React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' },
-        React.createElement('circle', { cx: 12, cy: 12, r: 1.5, fill: 'currentColor' }))),
+      onDelete
+        ? React.createElement('button', {
+            className: 'csd-camprow-del',
+            title: 'Delete campaign',
+            onClick: (e) => { e.stopPropagation(); if (window.confirm('Delete "' + c.campaign + '"?')) onDelete(c.id); },
+          },
+            React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+              React.createElement('polyline', { points: '3 6 5 6 21 6' }),
+              React.createElement('path', { d: 'M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' }),
+              React.createElement('path', { d: 'M10 11v6M14 11v6' })))
+        : React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' },
+            React.createElement('circle', { cx: 12, cy: 12, r: 1.5, fill: 'currentColor' }))),
     React.createElement('div', { className: 'name-cell' },
       React.createElement('span', { className: 'n', title: c.campaign }, c.campaign),
       React.createElement('span', { className: 'sub' },
