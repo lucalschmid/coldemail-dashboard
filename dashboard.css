@@ -1256,6 +1256,82 @@ html, body { margin: 0; padding: 0; }
 }
 @keyframes csd-load { 0% { left: -60px; } 100% { left: 200px; } }
 
+/* ---------- Clients toolbar ---------- */
+.csd-clients-toolbar {
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.csd-add-client-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.csd-add-client-input {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--d-fg);
+  background: var(--d-card-bg);
+  border: 1px solid var(--d-accent);
+  border-radius: 7px;
+  padding: 6px 12px;
+  outline: none;
+  width: 220px;
+}
+.csd-btn-primary {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 6px 14px;
+  border-radius: 7px;
+  border: none;
+  background: var(--d-fg);
+  color: var(--d-bg);
+  cursor: pointer;
+  transition: opacity 140ms;
+}
+.csd-btn-primary:hover { opacity: 0.82; }
+.csd-btn-ghost {
+  font-size: 12px;
+  font-family: inherit;
+  padding: 6px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--d-rule);
+  background: transparent;
+  color: var(--d-fg-2);
+  cursor: pointer;
+  transition: background 140ms;
+}
+.csd-btn-ghost:hover { background: var(--d-row-hover); }
+.csd-clientcard-edit-btn {
+  flex-shrink: 0;
+  display: none;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--d-fg-mute);
+  border-radius: 5px;
+  line-height: 0;
+  margin-left: auto;
+  transition: color 120ms, background 120ms;
+}
+.csd-clientcard-edit-btn:hover { color: var(--d-fg-2); background: var(--d-bg-soft); }
+.csd-clientcard-head:hover .csd-clientcard-edit-btn { display: flex; }
+.csd-client-rename-input {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--d-fg);
+  background: var(--d-bg-soft);
+  border: 1px solid var(--d-accent);
+  border-radius: 5px;
+  padding: 2px 8px;
+  outline: none;
+  width: 100%;
+}
+
 /* ---------- Lead Lists ---------- */
 .csd-leadlists {
   display: flex;
@@ -1278,8 +1354,30 @@ html, body { margin: 0; padding: 0; }
   user-select: none;
   transition: background 140ms var(--ease-standard);
 }
-.csd-ll-group-head:hover { background: var(--d-row-hover); }
 .csd-ll-group.open .csd-ll-group-head { border-bottom: 1px solid var(--d-rule); }
+.csd-ll-head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+}
+.csd-ll-head-left:hover { opacity: 0.8; }
+.csd-ll-add-btn {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--d-rule);
+  background: transparent;
+  color: var(--d-fg-2);
+  cursor: pointer;
+  transition: background 140ms, color 140ms;
+}
+.csd-ll-add-btn:hover { background: var(--d-fg); color: var(--d-bg); }
 .csd-ll-chev {
   color: var(--d-fg-mute);
   transition: transform 200ms var(--ease-standard);
@@ -1315,7 +1413,7 @@ html, body { margin: 0; padding: 0; }
 }
 .csd-ll-thead {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 100px 130px 90px 90px 100px;
+  grid-template-columns: minmax(0, 1fr) 100px 130px 90px 90px 100px 64px;
   gap: 14px;
   padding: 7px 18px;
   font-size: 10px;
@@ -1326,9 +1424,32 @@ html, body { margin: 0; padding: 0; }
   background: var(--d-bg-soft);
   border-bottom: 1px solid var(--d-rule);
 }
+.csd-ll-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.csd-ll-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--d-fg-mute);
+  border-radius: 5px;
+  line-height: 0;
+  opacity: 0;
+  transition: color 120ms, background 120ms, opacity 120ms;
+}
+.csd-ll-row:hover .csd-ll-action-btn { opacity: 1; }
+.csd-ll-action-btn:hover { color: var(--d-fg-2); background: var(--d-bg-soft); }
+.csd-ll-action-btn.delete:hover { color: var(--d-critical); }
 .csd-ll-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 100px 130px 90px 90px 100px;
+  grid-template-columns: minmax(0, 1fr) 100px 130px 90px 90px 100px 64px;
   gap: 14px;
   padding: 11px 18px;
   border-bottom: 1px solid var(--d-rule);

@@ -48,6 +48,39 @@ function dayLabels(n) {
   return out;
 }
 
+function openFilePicker(callback) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.csv,text/csv';
+  input.onchange = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => callback(file.name, ev.target.result);
+    reader.readAsText(file);
+  };
+  input.click();
+}
+function parseCSVLeadCount(text) {
+  const lines = text.split('\n').filter(l => l.trim().length > 0);
+  return Math.max(0, lines.length - 1);
+}
+function downloadBlob(filename, content) {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function campaignSummaryCSV(c, name) {
+  const rr = c.sends7d > 0 ? (c.replies7d / c.sends7d * 100).toFixed(2) + '%' : '—';
+  const prr = c.prr != null ? (c.prr * 100).toFixed(2) + '%' : '—';
+  const runway = isFinite(c.runwayDays) ? Math.round(c.runwayDays) + 'd' : '∞';
+  const headers = ['List Name','Client','Status','Sends 7d','Reply Rate','PRR','Leads Left','Total Leads','Runway'];
+  const row = [name, c.client, c.status, c.sends7d, rr, prr, c.leadsLeft, c.totalLeads, runway];
+  const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+  return [headers, row].map(r => r.map(esc).join(',')).join('\n');
+}
+
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [data, setData] = useState(null);
@@ -62,7 +95,20 @@ function App() {
   const [listNames, setListNames] = useState(() => {
     try { return JSON.parse(localStorage.getItem('csd:list-names:v1') || '{}'); } catch (e) { return {}; }
   });
+  const [clientNames, setClientNames] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('csd:client-names:v1') || '{}'); } catch (e) { return {}; }
+  });
+  const [customClients, setCustomClients] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('csd:custom-clients:v1') || '[]'); } catch (e) { return []; }
+  });
+  const [customLists, setCustomLists] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('csd:custom-lists:v1') || '[]'); } catch (e) { return []; }
+  });
   const [editingId, setEditingId] = useState(null);
+  const [editingClientName, setEditingClientName] = useState(null);
+  const [editingClientValue, setEditingClientValue] = useState('');
+  const [addingClient, setAddingClient] = useState(false);
+  const [newClientName, setNewClientName] = useState('');
   const [editingValue, setEditingValue] = useState('');
   const [openLLGroups, setOpenLLGroups] = useState(() => {
     try { return JSON.parse(localStorage.getItem('csd:ll-open:v1') || '{}'); } catch (e) { return {}; }
@@ -111,11 +157,34 @@ function App() {
 
   const derived = useMemo(() => {
     if (!data) return [];
-    return data.campaigns.map((c) => window.CSD.derive(c, thresholds));
-  }, [data, thresholds]);
+    const base = data.campaigns.map((c) => window.CSD.derive({
+      ...c, client: clientNames[c.client] || c.client,
+    }, thresholds));
+    const custom = customLists.map(l => window.CSD.derive({
+      id: l.id, client: clientNames[l.client] || l.client,
+      campaign: l.name, status: 'Paused',
+      sends7d: 0, replies7d: 0, posReplies7d: 0, bookings7d: 0,
+      totalLeads: l.totalLeads, contacted: 0, leadsLeft: l.totalLeads,
+      bounced: 0, lastSendDate: null, sparkline: [], isCustom: true,
+    }, thresholds));
+    return [...base, ...custom];
+  }, [data, thresholds, clientNames, customLists]);
 
   const actions = useMemo(() => window.CSD.buildActions(derived, thresholds), [derived, thresholds]);
-  const allGroups = useMemo(() => window.CSD.groupByClient(derived), [derived]);
+  const allGroups = useMemo(() => {
+    const groups = window.CSD.groupByClient(derived);
+    const existing = new Set(groups.map(g => g.client));
+    customClients.forEach(c => {
+      const name = clientNames[c.name] || c.name;
+      if (!existing.has(name)) groups.push({
+        client: name, campaigns: [], sends: 0, replies: 0, pos: 0, bookings: 0,
+        leadsLeft: 0, totalLeads: 0, active: 0, flagged: 0, warned: 0,
+        stale: 0, canRerun: 0, overall: 0, dailyRate: 0,
+        runwayDays: Infinity, sparkline: [], replyRate: null, prr: null,
+      });
+    });
+    return groups;
+  }, [derived, customClients, clientNames]);
 
   // Apply client filter to derived + groups + actions
   const filteredByClient = useMemo(() => {
@@ -396,34 +465,66 @@ function App() {
     React.createElement('p', null, msg));
 
   // ---------- Clients view ----------
-  const clientsView = React.createElement('div', { className: 'csd-clientcards' },
-    allGroups.map((g) => {
-      const initial = g.client.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
-      return React.createElement('div', {
-        key: g.client,
-        className: 'csd-clientcard',
-        onClick: () => { setActiveNav('campaigns'); setClientFilter(g.client); },
-      },
-        React.createElement('div', { className: 'csd-clientcard-head' },
-          React.createElement('div', { className: 'icon' }, initial),
-          React.createElement('div', null,
-            React.createElement('div', { className: 'name' }, g.client),
-            React.createElement('div', { className: 'sub' }, g.campaigns.length + ' campaigns · ' + g.active + ' active'))),
-        React.createElement('div', { className: 'csd-clientcard-grid' },
-          React.createElement('div', { className: 'cell' },
-            React.createElement('span', { className: 'l' }, 'Sends 7d'),
-            React.createElement('span', { className: 'v' }, fmtA.num(g.sends))),
-          React.createElement('div', { className: 'cell' },
-            React.createElement('span', { className: 'l' }, 'Reply rate'),
-            React.createElement('span', { className: 'v' }, g.replyRate !== null ? (g.replyRate * 100).toFixed(2) + '%' : '—')),
-          React.createElement('div', { className: 'cell' },
-            React.createElement('span', { className: 'l' }, 'PRR'),
-            React.createElement('span', { className: 'v' }, g.prr !== null ? (g.prr * 100).toFixed(2) + '%' : '—')),
-          React.createElement('div', { className: 'cell' },
-            React.createElement('span', { className: 'l' }, 'Leads left'),
-            React.createElement('span', { className: 'v' }, fmtA.numCompact(g.leadsLeft)))));
-    })
-  );
+  const clientsView = React.createElement(React.Fragment, null,
+    React.createElement('div', { className: 'csd-clients-toolbar' },
+      addingClient
+        ? React.createElement('div', { className: 'csd-add-client-form' },
+            React.createElement('input', {
+              className: 'csd-add-client-input',
+              placeholder: 'Client name…',
+              value: newClientName,
+              autoFocus: true,
+              onChange: e => setNewClientName(e.target.value),
+              onKeyDown: e => { if (e.key === 'Enter') addCustomClient(); if (e.key === 'Escape') { setAddingClient(false); setNewClientName(''); } },
+            }),
+            React.createElement('button', { className: 'csd-btn-primary', onClick: addCustomClient }, 'Add'),
+            React.createElement('button', { className: 'csd-btn-ghost', onClick: () => { setAddingClient(false); setNewClientName(''); } }, 'Cancel'))
+        : React.createElement('button', { className: 'csd-btn-primary', onClick: () => setAddingClient(true) }, '+ Add client')),
+    React.createElement('div', { className: 'csd-clientcards' },
+      allGroups.map((g) => {
+        const initial = g.client.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+        const isEditingThis = editingClientName === g.client;
+        return React.createElement('div', { key: g.client, className: 'csd-clientcard' },
+          React.createElement('div', { className: 'csd-clientcard-head', onClick: () => { if (!isEditingThis) { setActiveNav('campaigns'); setClientFilter(g.client); } } },
+            React.createElement('div', { className: 'icon' }, initial),
+            React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+              isEditingThis
+                ? React.createElement('input', {
+                    className: 'csd-client-rename-input',
+                    value: editingClientValue,
+                    autoFocus: true,
+                    onClick: e => e.stopPropagation(),
+                    onChange: e => setEditingClientValue(e.target.value),
+                    onBlur: () => saveClientName(g.client, editingClientValue),
+                    onKeyDown: e => {
+                      if (e.key === 'Enter') saveClientName(g.client, editingClientValue);
+                      if (e.key === 'Escape') setEditingClientName(null);
+                    },
+                  })
+                : React.createElement('div', { className: 'name' }, g.client),
+              React.createElement('div', { className: 'sub' }, g.campaigns.length + ' campaigns · ' + g.active + ' active')),
+            !isEditingThis && React.createElement('button', {
+              className: 'csd-clientcard-edit-btn',
+              title: 'Rename client',
+              onClick: e => { e.stopPropagation(); setEditingClientName(g.client); setEditingClientValue(g.client); },
+            },
+              React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                React.createElement('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }),
+                React.createElement('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })))),
+          React.createElement('div', { className: 'csd-clientcard-grid', onClick: () => { setActiveNav('campaigns'); setClientFilter(g.client); } },
+            React.createElement('div', { className: 'cell' },
+              React.createElement('span', { className: 'l' }, 'Sends 7d'),
+              React.createElement('span', { className: 'v' }, fmtA.num(g.sends))),
+            React.createElement('div', { className: 'cell' },
+              React.createElement('span', { className: 'l' }, 'Reply rate'),
+              React.createElement('span', { className: 'v' }, g.replyRate !== null ? (g.replyRate * 100).toFixed(2) + '%' : '—')),
+            React.createElement('div', { className: 'cell' },
+              React.createElement('span', { className: 'l' }, 'PRR'),
+              React.createElement('span', { className: 'v' }, g.prr !== null ? (g.prr * 100).toFixed(2) + '%' : '—')),
+            React.createElement('div', { className: 'cell' },
+              React.createElement('span', { className: 'l' }, 'Leads left'),
+              React.createElement('span', { className: 'v' }, fmtA.numCompact(g.leadsLeft)))));
+      })));
 
   // ---------- Campaigns view body ----------
   const campaignsBody = React.createElement(React.Fragment, null,
@@ -468,6 +569,39 @@ function App() {
               filteredGroups.flatMap(g => g.campaigns).map((c) =>
                 React.createElement(CampaignRow, { key: c.id, campaign: c }))))));
 
+  // ---------- Client edit handlers ----------
+  const saveClientName = (currentDisplay, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === currentDisplay) { setEditingClientName(null); return; }
+    const existingKey = Object.keys(clientNames).find(k => clientNames[k] === currentDisplay) || currentDisplay;
+    const next = { ...clientNames, [existingKey]: trimmed };
+    setClientNames(next);
+    try { localStorage.setItem('csd:client-names:v1', JSON.stringify(next)); } catch (e) {}
+    if (clientFilter === currentDisplay) setClientFilter(trimmed);
+    setEditingClientName(null);
+  };
+  const addCustomClient = () => {
+    const trimmed = newClientName.trim();
+    if (!trimmed) { setAddingClient(false); return; }
+    const id = 'cc-' + Date.now();
+    const next = [...customClients, { id, name: trimmed }];
+    setCustomClients(next);
+    try { localStorage.setItem('csd:custom-clients:v1', JSON.stringify(next)); } catch (e) {}
+    setNewClientName(''); setAddingClient(false);
+  };
+  const addCustomList = (clientName, fileName, csvText) => {
+    const id = 'cl-' + Date.now();
+    const newList = { id, client: clientName, name: fileName.replace(/\.csv$/i, ''), totalLeads: parseCSVLeadCount(csvText), uploadDate: new Date().toISOString().slice(0, 10), csvData: csvText };
+    const next = [...customLists, newList];
+    setCustomLists(next);
+    try { localStorage.setItem('csd:custom-lists:v1', JSON.stringify(next)); } catch (e) {}
+  };
+  const deleteCustomList = (id) => {
+    const next = customLists.filter(l => l.id !== id);
+    setCustomLists(next);
+    try { localStorage.setItem('csd:custom-lists:v1', JSON.stringify(next)); } catch (e) {}
+  };
+
   // ---------- Lead Lists helpers ----------
   const saveListName = (id, name) => {
     const next = { ...listNames, [id]: name };
@@ -493,17 +627,22 @@ function App() {
         });
 
       return React.createElement('div', { key: g.client, className: 'csd-ll-group' + (isOpen ? ' open' : '') },
-        React.createElement('div', {
-          className: 'csd-ll-group-head',
-          onClick: () => toggleLLGroup(g.client),
-          role: 'button',
-        },
-          React.createElement('span', { className: 'csd-ll-chev' },
-            React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-              React.createElement('polyline', { points: '9 18 15 12 9 6' }))),
-          React.createElement('div', { className: 'csd-ll-icon' }, initial),
-          React.createElement('span', { className: 'csd-ll-client' }, g.client),
-          React.createElement('span', { className: 'csd-ll-count' }, clientCampaigns.length + ' lists')),
+        React.createElement('div', { className: 'csd-ll-group-head' },
+          React.createElement('span', {
+            className: 'csd-ll-head-left',
+            onClick: () => toggleLLGroup(g.client),
+            role: 'button',
+          },
+            React.createElement('span', { className: 'csd-ll-chev' },
+              React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                React.createElement('polyline', { points: '9 18 15 12 9 6' }))),
+            React.createElement('div', { className: 'csd-ll-icon' }, initial),
+            React.createElement('span', { className: 'csd-ll-client' }, g.client),
+            React.createElement('span', { className: 'csd-ll-count' }, clientCampaigns.length + ' lists')),
+          React.createElement('button', {
+            className: 'csd-ll-add-btn',
+            onClick: (e) => { e.stopPropagation(); openFilePicker((fileName, csvText) => addCustomList(g.client, fileName, csvText)); },
+          }, '+ Add list')),
         isOpen && React.createElement('div', { className: 'csd-ll-table' },
           React.createElement('div', { className: 'csd-ll-thead' },
             React.createElement('span', null, 'List name'),
@@ -511,7 +650,8 @@ function App() {
             React.createElement('span', null, 'Last active'),
             React.createElement('span', null, 'Idle for'),
             React.createElement('span', null, 'Lead count'),
-            React.createElement('span', null, 'Rerun')),
+            React.createElement('span', null, 'Rerun'),
+            React.createElement('span', null, '')),
           clientCampaigns.map((c) => {
             const isActive = c.status === 'Active';
             const idleDays = c.daysSinceLastSend;
@@ -530,13 +670,16 @@ function App() {
             const rerunLabel = c.canRerun ? '↻ Ready' : isActive ? 'Running' : idleDays != null && idleDays < 7 ? (7 - idleDays) + 'd left' : '—';
             const rowSev = c.canRerun ? ' is-rerun' : isActive ? ' is-active' : c.staleSev > 0 ? ' is-idle' : '';
 
+            const iconBtn = (title, onClick, pathD) => React.createElement('button', { className: 'csd-ll-rename-btn', title, onClick },
+              React.createElement('svg', { width: 11, height: 11, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                ...(Array.isArray(pathD) ? pathD.map((d, i) => React.createElement('path', { key: i, d })) : [React.createElement('path', { d: pathD })])));
+
             return React.createElement('div', { key: c.id, className: 'csd-ll-row' + rowSev },
               React.createElement('span', { className: 'csd-ll-name-cell' },
                 isEditing
                   ? React.createElement('input', {
                       className: 'csd-ll-rename-input',
-                      value: editingValue,
-                      autoFocus: true,
+                      value: editingValue, autoFocus: true,
                       onChange: (e) => setEditingValue(e.target.value),
                       onBlur: () => { saveListName(c.id, editingValue.trim() || c.campaign); setEditingId(null); },
                       onKeyDown: (e) => {
@@ -547,14 +690,8 @@ function App() {
                     })
                   : React.createElement(React.Fragment, null,
                       React.createElement('span', { className: 'csd-ll-name', title: c.campaign }, displayName),
-                      React.createElement('button', {
-                        className: 'csd-ll-rename-btn',
-                        title: 'Rename',
-                        onClick: (e) => { e.stopPropagation(); setEditingId(c.id); setEditingValue(displayName); },
-                      },
-                        React.createElement('svg', { width: 11, height: 11, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
-                          React.createElement('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }),
-                          React.createElement('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' }))))),
+                      iconBtn('Rename', (e) => { e.stopPropagation(); setEditingId(c.id); setEditingValue(displayName); },
+                        ['M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7', 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z']))),
               React.createElement('span', null,
                 React.createElement('span', { className: 'csd-ll-status ' + c.status.toLowerCase() },
                   React.createElement('span', { className: 'dot' }),
@@ -563,7 +700,34 @@ function App() {
               React.createElement('span', { className: 'csd-ll-idle' + (c.staleSev === 2 ? ' crit' : c.staleSev === 1 ? ' warn' : isActive ? ' ok' : '') },
                 isActive ? '—' : idleLabel),
               React.createElement('span', { className: 'csd-ll-leads' }, fmtA.num(c.totalLeads)),
-              React.createElement('span', { className: rerunClass }, rerunLabel));
+              React.createElement('span', { className: rerunClass }, rerunLabel),
+              React.createElement('span', { className: 'csd-ll-actions' },
+                React.createElement('button', {
+                  className: 'csd-ll-action-btn',
+                  title: 'Download',
+                  onClick: () => {
+                    const customEntry = customLists.find(l => l.id === c.id);
+                    if (customEntry?.csvData) {
+                      downloadBlob((displayName || c.campaign).replace(/\s+/g, '_') + '.csv', customEntry.csvData);
+                    } else {
+                      downloadBlob((displayName || c.campaign).replace(/\s+/g, '_') + '_summary.csv', campaignSummaryCSV(c, displayName));
+                    }
+                  },
+                },
+                  React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                    React.createElement('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+                    React.createElement('polyline', { points: '7 10 12 15 17 10' }),
+                    React.createElement('line', { x1: 12, y1: 15, x2: 12, y2: 3 }))),
+                c.isCustom && React.createElement('button', {
+                  className: 'csd-ll-action-btn delete',
+                  title: 'Delete list',
+                  onClick: () => { if (window.confirm('Delete "' + displayName + '"?')) deleteCustomList(c.id); },
+                },
+                  React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                    React.createElement('polyline', { points: '3 6 5 6 21 6' }),
+                    React.createElement('path', { d: 'M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' }),
+                    React.createElement('path', { d: 'M10 11v6M14 11v6' }),
+                    React.createElement('path', { d: 'M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2' })))));
           })));
     }));
 
