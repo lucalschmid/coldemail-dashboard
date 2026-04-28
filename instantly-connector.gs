@@ -44,7 +44,8 @@ const DEFAULT_CLIENT = 'Unassigned';
 
 // ── Config ───────────────────────────────────────────────────
 const API_KEY            = () => PropertiesService.getScriptProperties().getProperty('INSTANTLY_API_KEY');
-const BASE_URL           = 'https://api.instantly.ai/api/v2';
+const BASE_V2            = 'https://api.instantly.ai/api/v2';  // campaign list
+const BASE_V1            = 'https://api.instantly.ai/api/v1';  // analytics (small responses)
 const LOOKBACK_SPARKLINE = 14;
 const LOOKBACK_STATS     = 7;
 
@@ -82,21 +83,31 @@ function buildDashboardData() {
   const start14 = fmtDate(daysAgo(today, LOOKBACK_SPARKLINE));
   const opts    = fetchOpts();
 
-  const campaigns = fetchCampaigns(opts);
+  const campaigns = fetchCampaigns(key, opts);
   if (!campaigns.length) return { generated_at: new Date().toISOString(), campaigns: [] };
 
-  // Parallel: summary (7d) + daily (14d) per campaign
-  const summaryReqs = campaigns.map(c => Object.assign({ url: `${BASE_URL}/campaigns/analytics?id=${c.id}&start_date=${start7}&end_date=${end}` }, opts));
-  const dailyReqs   = campaigns.map(c => Object.assign({ url: `${BASE_URL}/campaigns/analytics/daily?campaign_id=${c.id}&start_date=${start14}&end_date=${end}` }, opts));
+  // v1 analytics: clean small JSON, no bandwidth issues
+  // summary = 7d totals, daily = 14d sparkline
+  const v1Base      = `${BASE_V1}/analytics/campaign`;
+  const summaryReqs = campaigns.map(c => ({
+    url: `${v1Base}/summary?api_key=${key}&campaign_id=${c.id}&start_date=${start7}&end_date=${end}`,
+    muteHttpExceptions: true,
+  }));
+  const dailyReqs = campaigns.map(c => ({
+    url: `${v1Base}/count?api_key=${key}&campaign_id=${c.id}&start_date=${start14}&end_date=${end}`,
+    muteHttpExceptions: true,
+  }));
 
   const summaryRes = UrlFetchApp.fetchAll(summaryReqs);
   const dailyRes   = UrlFetchApp.fetchAll(dailyReqs);
 
   const result = campaigns.map((c, i) => {
+    // v1 summary returns an array — take first element
     const summaryRaw = safeJson(summaryRes[i]);
-    const s          = Array.isArray(summaryRaw) ? (summaryRaw[0] || {}) : (summaryRaw.data || summaryRaw || {});
+    const s          = Array.isArray(summaryRaw) ? (summaryRaw[0] || {}) : (summaryRaw || {});
+    // v1 daily returns a plain array
     const dailyRaw   = safeJson(dailyRes[i]);
-    const daily      = dailyRaw.items || dailyRaw.data || (Array.isArray(dailyRaw) ? dailyRaw : []);
+    const daily      = Array.isArray(dailyRaw) ? dailyRaw : (dailyRaw.data || []);
 
     const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
     const lastSendDate = getLastSendDate(daily);
@@ -125,13 +136,12 @@ function buildDashboardData() {
 }
 
 // ── Campaign list ─────────────────────────────────────────────
-function fetchCampaigns(opts) {
-  // Paginate through all campaigns (100 per page)
+function fetchCampaigns(key, opts) {
   const all = [];
   let startingAfter = null;
 
   for (let page = 0; page < 10; page++) {
-    const url = BASE_URL + '/campaigns?limit=100' + (startingAfter ? '&starting_after=' + startingAfter : '');
+    const url = BASE_V2 + '/campaigns?limit=100' + (startingAfter ? '&starting_after=' + startingAfter : '');
     const res  = UrlFetchApp.fetch(url, opts);
     const code = res.getResponseCode();
     if (code !== 200) {
@@ -186,22 +196,26 @@ function daysAgo(base, n) { return new Date(base.getTime() - n * 86400000); }
 // ── Test helpers ──────────────────────────────────────────────
 function testListCampaigns() {
   const opts = fetchOpts();
-  const res  = UrlFetchApp.fetch(BASE_URL + '/campaigns?limit=100', opts);
+  const res  = UrlFetchApp.fetch(BASE_V2 + '/campaigns?limit=5', opts); // limit 5 to keep log small
   Logger.log('HTTP ' + res.getResponseCode());
-  Logger.log(res.getContentText());
+  // Log just ids + names to keep output readable
+  const json = safeJson(res);
+  const items = json.items || [];
+  items.forEach(c => Logger.log(c.id + ' | ' + c.name + ' | status:' + c.status));
 }
 
 function testAnalytics() {
   const TEST_ID = 'efecb243-a7ba-4968-bd9d-46a2c4ef246a';
-  const opts    = fetchOpts();
+  const key     = API_KEY();
   const today   = fmtDate(new Date());
   const start7  = fmtDate(daysAgo(new Date(), 7));
   const start14 = fmtDate(daysAgo(new Date(), 14));
+  const base    = BASE_V1 + '/analytics/campaign';
 
-  const resSum = UrlFetchApp.fetch(`${BASE_URL}/campaigns/analytics?id=${TEST_ID}&start_date=${start7}&end_date=${today}`, opts);
+  const resSum = UrlFetchApp.fetch(`${base}/summary?api_key=${key}&campaign_id=${TEST_ID}&start_date=${start7}&end_date=${today}`, { muteHttpExceptions: true });
   Logger.log('SUMMARY HTTP ' + resSum.getResponseCode() + ': ' + resSum.getContentText());
 
-  const resDay = UrlFetchApp.fetch(`${BASE_URL}/campaigns/analytics/daily?campaign_id=${TEST_ID}&start_date=${start14}&end_date=${today}`, opts);
+  const resDay = UrlFetchApp.fetch(`${base}/count?api_key=${key}&campaign_id=${TEST_ID}&start_date=${start14}&end_date=${today}`, { muteHttpExceptions: true });
   Logger.log('DAILY HTTP ' + resDay.getResponseCode() + ': ' + resDay.getContentText());
 }
 
