@@ -72,38 +72,37 @@ function buildDashboardData() {
     url: `${BASE_URL}/analytics/campaign/count?api_key=${key}&campaign_id=${c.id}&start_date=${start14}&end_date=${end}`,
     muteHttpExceptions: true,
   }));
-  const leadReqs = campaigns.map(c => ({
-    url: `${BASE_URL}/lead/get/count?api_key=${key}&campaign_id=${c.id}`,
-    muteHttpExceptions: true,
-  }));
-
   const summaryRes = UrlFetchApp.fetchAll(summaryReqs);
   const dailyRes   = UrlFetchApp.fetchAll(dailyReqs);
-  const leadRes    = UrlFetchApp.fetchAll(leadReqs);
 
   const result = campaigns.map((c, i) => {
-    const summary   = safeJson(summaryRes[i]).data || {};
-    const dailyData = safeJson(dailyRes[i]);
-    const leadData  = safeJson(leadRes[i]);
+    // Summary is an array — take first element
+    const summaryArr = safeJson(summaryRes[i]);
+    const s          = (Array.isArray(summaryArr) ? summaryArr[0] : summaryArr) || {};
+    // Daily is also a plain array
+    const dailyArr   = safeJson(dailyRes[i]);
+    const daily      = Array.isArray(dailyArr) ? dailyArr : (dailyArr.data || []);
 
-    const sparkline    = buildSparkline(dailyData, today, LOOKBACK_SPARKLINE);
-    const lastSendDate = getLastSendDate(dailyData);
-    const totalLeads   = leadData.total     || 0;
-    const contacted    = leadData.contacted || 0;
+    const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
+    const lastSendDate = getLastSendDate(daily);
+
+    // Lead counts come from the summary (all-time, not date-filtered)
+    const totalLeads = s.leads_count     || 0;
+    const contacted  = s.contacted_count || 0;
 
     return {
       id:           c.id,
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
-      campaign:     c.name,
-      status:       c.status === 1 ? 'Active' : 'Paused',
-      sends7d:      summary.sent     || 0,
-      replies7d:    summary.replied  || 0,
+      campaign:     c.name || s.campaign_name || '',
+      status:       (c.status === 1 || s.campaign_status === 1) ? 'Active' : 'Paused',
+      sends7d:      s.emails_sent_count || 0,
+      replies7d:    s.reply_count_unique || 0,
       posReplies7d: 0,  // will come from tracking sheet
       bookings7d:   0,  // will come from tracking sheet
       totalLeads,
       contacted,
       leadsLeft:    Math.max(0, totalLeads - contacted),
-      bounced:      summary.bounced  || 0,
+      bounced:      s.bounced_count || 0,
       lastSendDate,
       sparkline,
     };
@@ -120,16 +119,10 @@ function fetchCampaigns(key) {
   return Array.isArray(json) ? json : (json.campaigns || []);
 }
 
-function buildSparkline(dailyData, today, days) {
-  // Build a date→count map from whatever shape Instantly returns
+function buildSparkline(daily, today, days) {
+  // daily is a plain array: [{ date, sent, ... }, ...]
   const map = {};
-  const items = dailyData.data || dailyData.counts || (Array.isArray(dailyData) ? dailyData : []);
-  items.forEach(function(d) {
-    const date  = d.date || d.day || '';
-    const count = d.count || d.sent || d.emails_sent || 0;
-    if (date) map[date] = (map[date] || 0) + count;
-  });
-
+  daily.forEach(function(d) { if (d.date) map[d.date] = d.sent || 0; });
   const out = [];
   for (let i = days - 1; i >= 0; i--) {
     out.push(map[fmtDate(daysAgo(today, i))] || 0);
@@ -137,10 +130,10 @@ function buildSparkline(dailyData, today, days) {
   return out;
 }
 
-function getLastSendDate(dailyData) {
-  const items = (dailyData.data || dailyData.counts || (Array.isArray(dailyData) ? dailyData : [])).slice().reverse();
-  for (const d of items) {
-    if ((d.count || d.sent || d.emails_sent || 0) > 0) return d.date || d.day || null;
+function getLastSendDate(daily) {
+  // daily is a plain array, newest last — scan backwards
+  for (let i = daily.length - 1; i >= 0; i--) {
+    if ((daily[i].sent || 0) > 0) return daily[i].date || null;
   }
   return null;
 }
