@@ -9,7 +9,7 @@ window.DASHBOARD_DATA = (function () {
   // ---------- Configuration ----------
   // Set this to your Apps Script /exec URL to load real data.
   // Leave empty string to always use mock data.
-  const APPS_SCRIPT_URL = '';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyFDiI7rkx7Fceq8U9SVviOSJ_8pGgPmuuWJzUFCHby7SKrm8uppylzm2hvUFBkuUUmaw/exec';
 
   // ---------- Mock data (shaped like real n8n payload) ----------
   // Field names match the transform_node_v2 output the user already wired up.
