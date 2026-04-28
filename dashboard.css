@@ -431,13 +431,7 @@ html, body { margin: 0; padding: 0; }
 .csd-clientgroup-head:hover { background: var(--d-row-hover); }
 .csd-clientgroup.open .csd-clientgroup-head {
   border-bottom: 1px solid var(--d-rule);
-  z-index: 5;
-  position: sticky;
-  top: 64px;
-  z-index: 4;
   background: var(--d-card-bg);
-  backdrop-filter: saturate(1.2) blur(8px);
-  -webkit-backdrop-filter: saturate(1.2) blur(8px);
 }
 
 .csd-clientgroup-head .chev {
@@ -608,8 +602,6 @@ html, body { margin: 0; padding: 0; }
   letter-spacing: 0.14em;
   color: var(--d-fg-mute);
   font-weight: 500;
-  position: sticky;
-  top: calc(64px + 56px);
   z-index: 3;
 }
 .csd-colstrip > span:first-child { /* gutter */ }
