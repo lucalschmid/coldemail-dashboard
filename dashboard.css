@@ -1273,9 +1273,20 @@ html, body { margin: 0; padding: 0; }
   align-items: center;
   gap: 10px;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--d-rule);
   background: var(--d-card-bg);
+  cursor: pointer;
+  user-select: none;
+  transition: background 140ms var(--ease-standard);
 }
+.csd-ll-group-head:hover { background: var(--d-row-hover); }
+.csd-ll-group.open .csd-ll-group-head { border-bottom: 1px solid var(--d-rule); }
+.csd-ll-chev {
+  color: var(--d-fg-mute);
+  transition: transform 200ms var(--ease-standard);
+  display: flex;
+  align-items: center;
+}
+.csd-ll-group.open .csd-ll-chev { transform: rotate(90deg); }
 .csd-ll-icon {
   width: 28px; height: 28px;
   background: var(--d-bg-soft);
@@ -1328,14 +1339,48 @@ html, body { margin: 0; padding: 0; }
 }
 .csd-ll-row:last-child { border-bottom: 0; }
 .csd-ll-row:hover { background: var(--d-row-hover); }
+.csd-ll-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .csd-ll-name {
   font-weight: 500;
   color: var(--d-fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 .csd-ll-row.is-idle .csd-ll-name { color: var(--d-fg-3); }
+.csd-ll-rename-btn {
+  flex-shrink: 0;
+  display: none;
+  background: none;
+  border: none;
+  padding: 3px;
+  cursor: pointer;
+  color: var(--d-fg-mute);
+  border-radius: 4px;
+  line-height: 0;
+  transition: color 120ms, background 120ms;
+}
+.csd-ll-rename-btn:hover { color: var(--d-fg-2); background: var(--d-bg-soft); }
+.csd-ll-row:hover .csd-ll-rename-btn { display: flex; }
+.csd-ll-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--d-fg);
+  background: var(--d-bg-soft);
+  border: 1px solid var(--d-accent);
+  border-radius: 5px;
+  padding: 2px 7px;
+  outline: none;
+}
 .csd-ll-status {
   display: inline-flex;
   align-items: center;
