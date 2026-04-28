@@ -77,6 +77,7 @@ function doGet(e) {
 
 // ── Main builder ─────────────────────────────────────────────
 function buildDashboardData() {
+  const key     = API_KEY();
   const today   = new Date();
   const end     = fmtDate(today);
   const start7  = fmtDate(daysAgo(today, LOOKBACK_STATS));
