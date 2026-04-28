@@ -149,16 +149,7 @@ function CampaignRow({ campaign: c }) {
     React.createElement('div', { className: 'name-cell' },
       React.createElement('span', { className: 'n', title: c.campaign }, c.campaign),
       React.createElement('span', { className: 'sub' },
-        React.createElement(StatusDot, { status: c.status }),
-        c.daysSinceLastSend != null && React.createElement('span', {
-          className: 'idle-tag' + (c.staleSev === 2 ? ' crit' : c.staleSev === 1 ? ' warn' : ''),
-        },
-          c.daysSinceLastSend === 0 ? 'Sent today'
-            : c.daysSinceLastSend === 1 ? 'Sent yesterday'
-            : c.daysSinceLastSend < 14 ? `Sent ${c.daysSinceLastSend}d ago`
-            : c.daysSinceLastSend < 60 ? `Idle ${c.daysSinceLastSend}d`
-            : `Idle ${Math.round(c.daysSinceLastSend / 30)}mo`),
-        c.canRerun && React.createElement('span', { className: 'rerun-tag', title: 'Cooldown elapsed — safe to rerun' }, '↻ Rerun ready'))),
+        React.createElement(StatusDot, { status: c.status }))),
     React.createElement('span', { className: 'stat-num' + (c.sends7d === 0 ? ' muted' : '') },
       fmt.num(c.sends7d),
       React.createElement('span', { className: 'sublabel' }, c.dailyRate > 0 ? Math.round(c.dailyRate) + '/day' : 'no sends')),

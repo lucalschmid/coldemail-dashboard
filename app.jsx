@@ -204,6 +204,9 @@ function App() {
           React.createElement('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }),
           React.createElement('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })),
         allGroups.length),
+      navItem('leadlists', 'Lead Lists',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('path', { d: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' }))),
       navItem('bookings', 'Bookings',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('rect', { x: 3, y: 4, width: 18, height: 18, rx: 2 }),
@@ -228,7 +231,7 @@ function App() {
   );
 
   // ---------- Topbar ----------
-  const titleByNav = { overview: 'Overview', campaigns: 'Campaigns', clients: 'Clients', bookings: 'Bookings', reports: 'Reports', settings: 'Settings' };
+  const titleByNav = { overview: 'Overview', campaigns: 'Campaigns', clients: 'Clients', leadlists: 'Lead Lists', bookings: 'Bookings', reports: 'Reports', settings: 'Settings' };
   const topbar = React.createElement('div', { className: 'csd-topbar' },
     React.createElement('div', { className: 'csd-topbar-title' },
       React.createElement('h1', null, titleByNav[activeNav] || 'Dashboard'),
@@ -457,9 +460,65 @@ function App() {
               filteredGroups.flatMap(g => g.campaigns).map((c) =>
                 React.createElement(CampaignRow, { key: c.id, campaign: c }))))));
 
+  // ---------- Lead Lists view ----------
+  const leadListsView = React.createElement('div', { className: 'csd-leadlists' },
+    allGroups.map((g) => {
+      const initial = g.client.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
+      const clientCampaigns = derived.filter(c => c.client === g.client)
+        .sort((a, b) => {
+          // Active first, then by idle days desc
+          if (a.status === 'Active' && b.status !== 'Active') return -1;
+          if (b.status === 'Active' && a.status !== 'Active') return 1;
+          return (b.daysSinceLastSend || 0) - (a.daysSinceLastSend || 0);
+        });
+
+      return React.createElement('div', { key: g.client, className: 'csd-ll-group' },
+        React.createElement('div', { className: 'csd-ll-group-head' },
+          React.createElement('div', { className: 'csd-ll-icon' }, initial),
+          React.createElement('span', { className: 'csd-ll-client' }, g.client),
+          React.createElement('span', { className: 'csd-ll-count' }, clientCampaigns.length + ' lists')),
+        React.createElement('div', { className: 'csd-ll-table' },
+          React.createElement('div', { className: 'csd-ll-thead' },
+            React.createElement('span', null, 'List name'),
+            React.createElement('span', null, 'Status'),
+            React.createElement('span', null, 'Last active'),
+            React.createElement('span', null, 'Idle for'),
+            React.createElement('span', null, 'Leads left'),
+            React.createElement('span', null, 'Rerun')),
+          clientCampaigns.map((c) => {
+            const isActive = c.status === 'Active';
+            const idleDays = c.daysSinceLastSend;
+            const idleLabel = idleDays == null ? '—'
+              : idleDays === 0 ? 'Today'
+              : idleDays === 1 ? 'Yesterday'
+              : idleDays < 60 ? idleDays + 'd'
+              : Math.round(idleDays / 30) + 'mo';
+            const sinceLabel = idleDays == null ? '—'
+              : idleDays === 0 ? 'Sent today'
+              : idleDays === 1 ? 'Sent yesterday'
+              : 'Sent ' + (idleDays < 60 ? idleDays + 'd ago' : Math.round(idleDays / 30) + 'mo ago');
+            const rerunClass = c.canRerun ? 'csd-ll-rerun ready' : isActive ? 'csd-ll-rerun active' : 'csd-ll-rerun wait';
+            const rerunLabel = c.canRerun ? '↻ Ready' : isActive ? 'Running' : idleDays != null && idleDays < 7 ? (7 - idleDays) + 'd left' : '—';
+            const rowSev = c.canRerun ? ' is-rerun' : isActive ? ' is-active' : c.staleSev > 0 ? ' is-idle' : '';
+
+            return React.createElement('div', { key: c.id, className: 'csd-ll-row' + rowSev },
+              React.createElement('span', { className: 'csd-ll-name', title: c.campaign }, c.campaign),
+              React.createElement('span', null,
+                React.createElement('span', { className: 'csd-ll-status ' + c.status.toLowerCase() },
+                  React.createElement('span', { className: 'dot' }),
+                  c.status)),
+              React.createElement('span', { className: 'csd-ll-meta' }, sinceLabel),
+              React.createElement('span', { className: 'csd-ll-idle' + (c.staleSev === 2 ? ' crit' : c.staleSev === 1 ? ' warn' : isActive ? ' ok' : '') },
+                isActive ? '—' : idleLabel),
+              React.createElement('span', { className: 'csd-ll-leads' }, fmtA.numCompact(c.leadsLeft)),
+              React.createElement('span', { className: rerunClass }, rerunLabel));
+          })));
+    }));
+
   let viewBody;
   if (activeNav === 'clients') viewBody = clientsView;
   else if (activeNav === 'overview') viewBody = React.createElement(React.Fragment, null, statsRow, banner, emptyPage('Overview coming soon', 'Aggregate trends across the whole portfolio. For now, the Campaigns tab is your command center.'));
+  else if (activeNav === 'leadlists') viewBody = leadListsView;
   else if (activeNav === 'bookings') viewBody = emptyPage('Bookings', 'Once Calendly is wired in, this view will show every call booked across all campaigns with attribution back to the source sequence.');
   else if (activeNav === 'reports') viewBody = emptyPage('Reports', 'Weekly and monthly snapshots, exportable as CSV or PDF.');
   else if (activeNav === 'settings') viewBody = emptyPage('Settings', 'Thresholds, integrations, team access. Use the Tweaks toggle for the live design knobs.');
