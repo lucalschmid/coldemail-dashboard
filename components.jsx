@@ -123,23 +123,6 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels }) {
           React.createElement('span', { className: 'dot' }), flagPill.txt))),
     // Body
     isOpen && React.createElement('div', { className: 'csd-clientgroup-body' },
-      // Per-day chart for this client — compact horizontal
-      React.createElement('div', { className: 'csd-clientgroup-chart' },
-        React.createElement('div', { className: 'total' },
-          React.createElement('span', { className: 'l' }, 'Avg / day'),
-          React.createElement('span', { className: 'v' }, fmt.num(Math.round(group.sends / 7)))),
-        React.createElement('div', { className: 'total' },
-          React.createElement('span', { className: 'l' }, 'Replies 7d'),
-          React.createElement('span', { className: 'v' }, group.replies)),
-        React.createElement('div', { className: 'total' },
-          React.createElement('span', { className: 'l' }, 'Bookings 7d'),
-          React.createElement('span', { className: 'v' }, group.bookings || 0)),
-        React.createElement('div', { className: 'total' + (group.stale > 0 ? ' alert' : '') },
-          React.createElement('span', { className: 'l' }, 'Idle lists'),
-          React.createElement('span', { className: 'v' },
-            group.stale || 0,
-            group.canRerun > 0 && React.createElement('span', { className: 'unit', style: { color: 'var(--d-accent)' } }, ' · ' + group.canRerun + ' can rerun'))),
-        React.createElement(DayChart, { data: group.sparkline, labels: dayLabels })),
       // Column header strip
       React.createElement('div', { className: 'csd-colstrip' },
         React.createElement('span', null),
