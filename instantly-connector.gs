@@ -1,12 +1,12 @@
 // ============================================================
-// Compound Scaling Dashboard — Instantly Connector
+// Compound Scaling Dashboard — Instantly Connector (v2 API)
 // Google Apps Script  |  deploy as Web App
 // ============================================================
 //
 // SETUP (one-time):
 //   1. script.google.com → New project → paste this file
 //   2. Project Settings → Script Properties → Add:
-//        INSTANTLY_API_KEY  →  your key from app.instantly.ai/api-keys
+//        INSTANTLY_API_KEY  →  your key from app.instantly.ai/app/settings/api-keys
 //   3. Deploy → New deployment → Web app
 //        Execute as: Me
 //        Who has access: Anyone
@@ -14,24 +14,50 @@
 //
 // CLIENT MAP:
 //   Instantly has no "client" concept. Map campaign IDs here.
-//   Run testListCampaigns() first to get your real campaign IDs.
+//   Run testListCampaigns() first to verify IDs match.
 // ============================================================
 
 // ── Client mapping ──────────────────────────────────────────
-// Key   = Instantly campaign ID (UUID)
-// Value = Client name shown in the dashboard
 const CLIENT_MAP = {
-  // Paste your campaign IDs after running testListCampaigns()
-  // 'fa221bcc-9e4b-4d29-93dd-1aa6628a8c99': 'Compound Scaling',
-  // 'b7e396a4-f893-47ed-a2f7-3017457bd705': 'Cory ID Axis',
+  // Cory Woodward (ID Axis by Leative)
+  'f7f9fa72-5cc9-4303-88e5-390b5276b79b': 'Cory Woodward',
+  'efecb243-a7ba-4968-bd9d-46a2c4ef246a': 'Cory Woodward',
+  'b7e396a4-f893-47ed-a2f7-3017457bd705': 'Cory Woodward',
+  '9edebe1d-07ee-466b-aed4-4b6c1fa98b38': 'Cory Woodward',
+  '7127b8eb-d4b1-4e9b-9e1f-103226692956': 'Cory Woodward',
+  '6a280465-f8c1-4070-aff6-b23f7cb81e29': 'Cory Woodward',
+
+  // Lukas Rieger (100% Sauber)
+  '83e3de04-36f6-4568-b19a-f97332f05efe': 'Lukas Rieger',
+
+  // Comwrap Reply (Katie Davis)
+  '3bb45613-5c30-4dd7-8b5c-7819a967a12a': 'Comwrap Reply',
+
+  // Compound Scaling (Michelle)
+  '2963dd5e-9598-4f70-9320-97c31338d960': 'Compound Scaling',
+  '294c8e5d-f593-4f37-91b9-85f7606f7bb7': 'Compound Scaling',
+  '2623797e-58af-4135-97c5-733272a33723': 'Compound Scaling',
+  '08c4e446-3b5f-4c28-bd4e-e2d1c2e6e206': 'Compound Scaling',
+  '053df7ff-0900-4d9e-abea-ab3df5f275f6': 'Compound Scaling',
 };
 const DEFAULT_CLIENT = 'Unassigned';
 
 // ── Config ───────────────────────────────────────────────────
-const API_KEY  = () => PropertiesService.getScriptProperties().getProperty('INSTANTLY_API_KEY');
-const BASE_URL = 'https://api.instantly.ai/api/v1';
-const LOOKBACK_SPARKLINE = 14; // days of daily data for trend chart
-const LOOKBACK_STATS     = 7;  // days for sends/replies totals
+const API_KEY            = () => PropertiesService.getScriptProperties().getProperty('INSTANTLY_API_KEY');
+const BASE_URL           = 'https://api.instantly.ai/api/v2';
+const LOOKBACK_SPARKLINE = 14;
+const LOOKBACK_STATS     = 7;
+
+// ── Auth ─────────────────────────────────────────────────────
+function fetchOpts() {
+  const key = API_KEY();
+  if (!key) throw new Error('INSTANTLY_API_KEY not set in Script Properties');
+  return {
+    method: 'get',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+    muteHttpExceptions: true,
+  };
+}
 
 // ── Entry point (JSONP) ──────────────────────────────────────
 function doGet(e) {
@@ -42,67 +68,54 @@ function doGet(e) {
       .createTextOutput(cb + '(' + payload + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   } catch (err) {
-    const errPayload = JSON.stringify({ error: err.message, stack: err.stack });
     return ContentService
-      .createTextOutput(cb + '(' + errPayload + ')')
+      .createTextOutput(cb + '(' + JSON.stringify({ error: err.message }) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
 }
 
 // ── Main builder ─────────────────────────────────────────────
 function buildDashboardData() {
-  const key = API_KEY();
-  if (!key) throw new Error('INSTANTLY_API_KEY not set in Script Properties');
-
   const today   = new Date();
   const end     = fmtDate(today);
   const start7  = fmtDate(daysAgo(today, LOOKBACK_STATS));
   const start14 = fmtDate(daysAgo(today, LOOKBACK_SPARKLINE));
+  const opts    = fetchOpts();
 
-  // 1 – campaign list
-  const campaigns = fetchCampaigns(key);
+  const campaigns = fetchCampaigns(opts);
   if (!campaigns.length) return { generated_at: new Date().toISOString(), campaigns: [] };
 
-  // 2 – parallel fetches: 7d summary + 14d daily + lead counts
-  const summaryReqs = campaigns.map(c => ({
-    url: `${BASE_URL}/analytics/campaign/summary?api_key=${key}&campaign_id=${c.id}&start_date=${start7}&end_date=${end}`,
-    muteHttpExceptions: true,
-  }));
-  const dailyReqs = campaigns.map(c => ({
-    url: `${BASE_URL}/analytics/campaign/count?api_key=${key}&campaign_id=${c.id}&start_date=${start14}&end_date=${end}`,
-    muteHttpExceptions: true,
-  }));
+  // Parallel: summary (7d) + daily (14d) per campaign
+  const summaryReqs = campaigns.map(c => Object.assign({ url: `${BASE_URL}/campaigns/analytics?id=${c.id}&start_date=${start7}&end_date=${end}` }, opts));
+  const dailyReqs   = campaigns.map(c => Object.assign({ url: `${BASE_URL}/campaigns/analytics/daily?campaign_id=${c.id}&start_date=${start14}&end_date=${end}` }, opts));
+
   const summaryRes = UrlFetchApp.fetchAll(summaryReqs);
   const dailyRes   = UrlFetchApp.fetchAll(dailyReqs);
 
   const result = campaigns.map((c, i) => {
-    // Summary is an array — take first element
-    const summaryArr = safeJson(summaryRes[i]);
-    const s          = (Array.isArray(summaryArr) ? summaryArr[0] : summaryArr) || {};
-    // Daily is also a plain array
-    const dailyArr   = safeJson(dailyRes[i]);
-    const daily      = Array.isArray(dailyArr) ? dailyArr : (dailyArr.data || []);
+    const summaryRaw = safeJson(summaryRes[i]);
+    const s          = Array.isArray(summaryRaw) ? (summaryRaw[0] || {}) : (summaryRaw.data || summaryRaw || {});
+    const dailyRaw   = safeJson(dailyRes[i]);
+    const daily      = dailyRaw.items || dailyRaw.data || (Array.isArray(dailyRaw) ? dailyRaw : []);
 
     const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
     const lastSendDate = getLastSendDate(daily);
-
-    // Lead counts come from the summary (all-time, not date-filtered)
-    const totalLeads = s.leads_count     || 0;
-    const contacted  = s.contacted_count || 0;
+    const totalLeads   = num(s.leads_count     || s.total_leads);
+    const contacted    = num(s.contacted_count || s.contacted);
 
     return {
       id:           c.id,
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
-      campaign:     c.name || s.campaign_name || '',
-      status:       (c.status === 1 || s.campaign_status === 1) ? 'Active' : 'Paused',
-      sends7d:      s.emails_sent_count || 0,
-      replies7d:    s.reply_count_unique || 0,
-      posReplies7d: 0,  // will come from tracking sheet
-      bookings7d:   0,  // will come from tracking sheet
+      campaign:     c.name,
+      status:       statusLabel(c.status),
+      sends7d:      num(s.emails_sent_count || s.sent_count || s.sent),
+      replies7d:    num(s.reply_count_unique || s.reply_count || s.replied),
+      posReplies7d: 0,
+      bookings7d:   0,
       totalLeads,
       contacted,
       leadsLeft:    Math.max(0, totalLeads - contacted),
-      bounced:      s.bounced_count || 0,
+      bounced:      num(s.bounced_count || s.bounced),
       lastSendDate,
       sparkline,
     };
@@ -111,29 +124,53 @@ function buildDashboardData() {
   return { generated_at: new Date().toISOString(), campaigns: result };
 }
 
-// ── Instantly helpers ─────────────────────────────────────────
-function fetchCampaigns(key) {
-  const res  = UrlFetchApp.fetch(`${BASE_URL}/campaign/list?api_key=${key}&limit=100&skip=0`, { muteHttpExceptions: true });
-  const json = safeJson(res);
-  // API returns either { campaigns: [...] } or an array directly
-  return Array.isArray(json) ? json : (json.campaigns || []);
+// ── Campaign list ─────────────────────────────────────────────
+function fetchCampaigns(opts) {
+  // Paginate through all campaigns (100 per page)
+  const all = [];
+  let startingAfter = null;
+
+  for (let page = 0; page < 10; page++) {
+    const url = BASE_URL + '/campaigns?limit=100' + (startingAfter ? '&starting_after=' + startingAfter : '');
+    const res  = UrlFetchApp.fetch(url, opts);
+    const code = res.getResponseCode();
+    if (code !== 200) {
+      Logger.log('fetchCampaigns error ' + code + ': ' + res.getContentText());
+      break;
+    }
+    const json = safeJson(res);
+    const items = json.items || json.data || (Array.isArray(json) ? json : []);
+    all.push.apply(all, items);
+    startingAfter = json.next_starting_after || null;
+    if (!startingAfter || items.length < 100) break;
+  }
+  return all;
 }
 
+// ── Status label ──────────────────────────────────────────────
+function statusLabel(status) {
+  if (status === 1 || status === 4) return 'Active';
+  if (status === 2) return 'Paused';
+  if (status === 3) return 'Completed';
+  return 'Draft';
+}
+
+// ── Sparkline + last send ─────────────────────────────────────
 function buildSparkline(daily, today, days) {
-  // daily is a plain array: [{ date, sent, ... }, ...]
   const map = {};
-  daily.forEach(function(d) { if (d.date) map[d.date] = d.sent || 0; });
+  daily.forEach(function(d) {
+    const date  = d.date || d.day || '';
+    const count = num(d.sent || d.emails_sent || d.count);
+    if (date) map[date] = (map[date] || 0) + count;
+  });
   const out = [];
-  for (let i = days - 1; i >= 0; i--) {
-    out.push(map[fmtDate(daysAgo(today, i))] || 0);
-  }
+  for (let i = days - 1; i >= 0; i--) out.push(map[fmtDate(daysAgo(today, i))] || 0);
   return out;
 }
 
 function getLastSendDate(daily) {
-  // daily is a plain array, newest last — scan backwards
   for (let i = daily.length - 1; i >= 0; i--) {
-    if ((daily[i].sent || 0) > 0) return daily[i].date || null;
+    if (num(daily[i].sent || daily[i].emails_sent || daily[i].count) > 0) return daily[i].date || daily[i].day || null;
   }
   return null;
 }
@@ -142,28 +179,30 @@ function getLastSendDate(daily) {
 function safeJson(response) {
   try { return JSON.parse(response.getContentText()); } catch (e) { return {}; }
 }
+function num(v) { return Number(v) || 0; }
 function fmtDate(d) { return d.toISOString().slice(0, 10); }
 function daysAgo(base, n) { return new Date(base.getTime() - n * 86400000); }
 
-// ── Test helpers (run these manually in the Apps Script editor) ──
+// ── Test helpers ──────────────────────────────────────────────
 function testListCampaigns() {
-  const key = API_KEY();
-  const res = UrlFetchApp.fetch(`${BASE_URL}/campaign/list?api_key=${key}&limit=100`);
+  const opts = fetchOpts();
+  const res  = UrlFetchApp.fetch(BASE_URL + '/campaigns?limit=100', opts);
+  Logger.log('HTTP ' + res.getResponseCode());
   Logger.log(res.getContentText());
 }
 
 function testAnalytics() {
-  // Replace with a real campaign ID from testListCampaigns()
-  const TEST_CAMPAIGN_ID = 'PASTE_CAMPAIGN_ID_HERE';
-  const key = API_KEY();
-  const today  = fmtDate(new Date());
-  const start  = fmtDate(daysAgo(new Date(), 7));
-  const resSum = UrlFetchApp.fetch(`${BASE_URL}/analytics/campaign/summary?api_key=${key}&campaign_id=${TEST_CAMPAIGN_ID}&start_date=${start}&end_date=${today}`);
-  Logger.log('SUMMARY: ' + resSum.getContentText());
-  const resDay = UrlFetchApp.fetch(`${BASE_URL}/analytics/campaign/count?api_key=${key}&campaign_id=${TEST_CAMPAIGN_ID}&start_date=${fmtDate(daysAgo(new Date(), 14))}&end_date=${today}`);
-  Logger.log('DAILY: ' + resDay.getContentText());
-  const resLead = UrlFetchApp.fetch(`${BASE_URL}/lead/get/count?api_key=${key}&campaign_id=${TEST_CAMPAIGN_ID}`);
-  Logger.log('LEADS: ' + resLead.getContentText());
+  const TEST_ID = 'efecb243-a7ba-4968-bd9d-46a2c4ef246a';
+  const opts    = fetchOpts();
+  const today   = fmtDate(new Date());
+  const start7  = fmtDate(daysAgo(new Date(), 7));
+  const start14 = fmtDate(daysAgo(new Date(), 14));
+
+  const resSum = UrlFetchApp.fetch(`${BASE_URL}/campaigns/analytics?id=${TEST_ID}&start_date=${start7}&end_date=${today}`, opts);
+  Logger.log('SUMMARY HTTP ' + resSum.getResponseCode() + ': ' + resSum.getContentText());
+
+  const resDay = UrlFetchApp.fetch(`${BASE_URL}/campaigns/analytics/daily?campaign_id=${TEST_ID}&start_date=${start14}&end_date=${today}`, opts);
+  Logger.log('DAILY HTTP ' + resDay.getResponseCode() + ': ' + resDay.getContentText());
 }
 
 function testFullBuild() {
