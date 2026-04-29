@@ -134,7 +134,7 @@ function buildDashboardData() {
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      sends7d:      num(s.emails_sent_count),
+      sends7d:      num(s.new_leads_contacted_count),  // first emails only, no follow-ups
       replies7d:    num(s.reply_count_unique),
       posReplies7d: 0,
       bookings7d:   0,
@@ -185,7 +185,7 @@ function buildSparkline(daily, today, days) {
   const map = {};
   daily.forEach(function(d) {
     const date  = d.date || d.day || '';
-    const count = num(d.sent || d.emails_sent || d.count);
+    const count = num(d.new_leads_contacted || d.sent || d.count);  // first emails only
     if (date) map[date] = (map[date] || 0) + count;
   });
   const out = [];
@@ -195,7 +195,7 @@ function buildSparkline(daily, today, days) {
 
 function getLastSendDate(daily) {
   for (let i = daily.length - 1; i >= 0; i--) {
-    if (num(daily[i].sent || daily[i].emails_sent || daily[i].count) > 0) return daily[i].date || daily[i].day || null;
+    if (num(daily[i].new_leads_contacted || daily[i].sent || daily[i].count) > 0) return daily[i].date || daily[i].day || null;
   }
   return null;
 }
