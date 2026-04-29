@@ -134,9 +134,9 @@ function buildDashboardData() {
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      sends7d:      num(s.contacted_count),  // matches Instantly UI (unique leads who received any email)
-      replies7d:    num(s.reply_count_unique),
-      posReplies7d: 0,
+      sends7d:      num(s.contacted_count),
+      replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),  // all replies incl. auto (matches Instantly UI)
+      posReplies7d: num(s.total_opportunities),  // leads marked as opportunity/interested
       bookings7d:   0,
       totalLeads,
       contacted,
