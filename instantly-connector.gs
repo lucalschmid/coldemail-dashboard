@@ -59,11 +59,21 @@ function fetchOpts() {
   };
 }
 
-// ── Entry point (JSONP) ──────────────────────────────────────
+// ── Cache key ────────────────────────────────────────────────
+const CACHE_KEY = 'csd_dashboard_v1';
+
+// ── Entry point (JSONP) — reads from cache, responds instantly ─
 function doGet(e) {
   const cb = (e.parameter && e.parameter.callback) || 'callback';
   try {
-    const payload = JSON.stringify(buildDashboardData());
+    const props   = PropertiesService.getScriptProperties();
+    const payload = props.getProperty(CACHE_KEY);
+    if (!payload) {
+      // No cache yet — tell dashboard to use mock data and prompt manual refresh
+      return ContentService
+        .createTextOutput(cb + '(' + JSON.stringify({ error: 'cache_empty', message: 'Run refreshCache() in Apps Script editor to initialise.' }) + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
     return ContentService
       .createTextOutput(cb + '(' + payload + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -72,6 +82,21 @@ function doGet(e) {
       .createTextOutput(cb + '(' + JSON.stringify({ error: err.message }) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
+}
+
+// ── Cache refresh — run manually once, then via hourly trigger ─
+function refreshCache() {
+  const data    = buildDashboardData();
+  const payload = JSON.stringify(data);
+  PropertiesService.getScriptProperties().setProperty(CACHE_KEY, payload);
+  Logger.log('Cache refreshed. Campaigns: ' + data.campaigns.length + ' | Size: ' + payload.length + ' bytes');
+}
+
+// ── One-time trigger setup ────────────────────────────────────
+function setupHourlyTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('refreshCache').timeBased().everyHours(1).create();
+  Logger.log('Hourly trigger created for refreshCache');
 }
 
 // ── Main builder ─────────────────────────────────────────────
