@@ -117,12 +117,13 @@ function buildDashboardData() {
     const daily  = Array.isArray(dayRaw) ? dayRaw : (dayRaw.items || dayRaw.data || []);
 
     // Last 7 days with any sends
+    // v2 daily fields: contacted, unique_replies, unique_replies_automatic
     const activeDays = daily
-      .filter(function(d) { return num(d.contacted_count || d.new_leads_contacted_count) > 0; })
+      .filter(function(d) { return num(d.contacted) > 0; })
       .slice(-7);
 
-    const sends7d   = activeDays.reduce(function(s, d) { return s + num(d.contacted_count || d.new_leads_contacted_count); }, 0);
-    const replies7d = activeDays.reduce(function(s, d) { return s + num(d.reply_count_unique) + num(d.reply_count_automatic_unique); }, 0);
+    const sends7d   = activeDays.reduce(function(s, d) { return s + num(d.contacted); }, 0);
+    const replies7d = activeDays.reduce(function(s, d) { return s + num(d.unique_replies) + num(d.unique_replies_automatic); }, 0);
 
     // All-time summary for campaign totals + opportunities
     const sumUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id;
@@ -190,9 +191,7 @@ function statusLabel(status) {
 function buildSparkline(daily, today, days) {
   const map = {};
   daily.forEach(function(d) {
-    const date  = d.date || d.day || '';
-    const count = num(d.contacted_count || d.new_leads_contacted_count || d.contacted);
-    if (date) map[date] = (map[date] || 0) + count;
+    if (d.date) map[d.date] = num(d.contacted);
   });
   const out = [];
   for (let i = days - 1; i >= 0; i--) out.push(map[fmtDate(daysAgo(today, i))] || 0);
@@ -201,7 +200,7 @@ function buildSparkline(daily, today, days) {
 
 function getLastSendDate(daily) {
   for (let i = daily.length - 1; i >= 0; i--) {
-    if (num(daily[i].contacted_count || daily[i].new_leads_contacted_count || daily[i].contacted) > 0) return daily[i].date || daily[i].day || null;
+    if (num(daily[i].contacted) > 0) return daily[i].date || null;
   }
   return null;
 }
