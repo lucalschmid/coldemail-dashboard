@@ -227,7 +227,7 @@ window.CSD.aggregate = function aggregate(derived) {
   const flagged = derived.filter((c) => c.overall === 2).length;
   return {
     sends, replies, pos, bookings, leadsLeft, totalLeads, contacted,
-    prr: sends > 0 ? pos / sends : null,
+    prr: replies > 0 ? pos / replies : null,
     abr: sends > 0 ? bookings / sends : null,
     replyRate: sends > 0 ? replies / sends : null,
     active,
@@ -289,7 +289,7 @@ window.CSD.groupByClient = function groupByClient(derived) {
       runwayDays,
       sparkline,
       replyRate: sends > 0 ? replies / sends : null,
-      prr: sends > 0 ? pos / sends : null,
+      prr: replies > 0 ? pos / replies : null,
     };
   }).sort((a, b) => b.sends - a.sends);
 };
