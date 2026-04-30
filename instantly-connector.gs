@@ -103,26 +103,32 @@ function setupHourlyTrigger() {
 function buildDashboardData() {
   const today   = new Date();
   const end     = fmtDate(today);
-  const start7  = fmtDate(daysAgo(today, LOOKBACK_STATS));
-  const start14 = fmtDate(daysAgo(today, LOOKBACK_SPARKLINE));
+  const start30 = fmtDate(daysAgo(today, 30)); // wide window to find 7 active days
   const opts    = fetchOpts();
 
   const campaigns = fetchCampaigns(opts);
   if (!campaigns.length) return { generated_at: new Date().toISOString(), campaigns: [] };
 
-  // Sequential fetching — avoids bandwidth quota from parallel fetchAll
   const result = campaigns.map(function(c) {
-    // Summary: confirmed working, 688 bytes per campaign
-    const sumUrl  = BASE_V2 + '/campaigns/analytics?id=' + c.id + '&start_date=' + start7 + '&end_date=' + end;
-    const sumRes  = UrlFetchApp.fetch(sumUrl, opts);
-    const sumRaw  = safeJson(sumRes);
-    const s       = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
+    // 30-day daily data — find last 7 ACTIVE sending days (matches Instantly's "last 7 days")
+    const dayUrl = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + c.id + '&start_date=' + start30 + '&end_date=' + end;
+    const dayRes = UrlFetchApp.fetch(dayUrl, opts);
+    const dayRaw = safeJson(dayRes);
+    const daily  = Array.isArray(dayRaw) ? dayRaw : (dayRaw.items || dayRaw.data || []);
 
-    // Daily: fetch 14d for sparkline — small delay to be safe
-    const dayUrl  = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + c.id + '&start_date=' + start14 + '&end_date=' + end;
-    const dayRes  = UrlFetchApp.fetch(dayUrl, opts);
-    const dayRaw  = safeJson(dayRes);
-    const daily   = Array.isArray(dayRaw) ? dayRaw : (dayRaw.items || dayRaw.data || []);
+    // Last 7 days with any sends
+    const activeDays = daily
+      .filter(function(d) { return num(d.contacted_count || d.new_leads_contacted_count) > 0; })
+      .slice(-7);
+
+    const sends7d   = activeDays.reduce(function(s, d) { return s + num(d.contacted_count || d.new_leads_contacted_count); }, 0);
+    const replies7d = activeDays.reduce(function(s, d) { return s + num(d.reply_count_unique) + num(d.reply_count_automatic_unique); }, 0);
+
+    // All-time summary for campaign totals + opportunities
+    const sumUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id;
+    const sumRes = UrlFetchApp.fetch(sumUrl, opts);
+    const sumRaw = safeJson(sumRes);
+    const s      = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
 
     const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
     const lastSendDate = getLastSendDate(daily);
@@ -134,9 +140,9 @@ function buildDashboardData() {
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      sends7d:      num(s.contacted_count),
-      replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),  // all replies incl. auto (matches Instantly UI)
-      posReplies7d: num(s.total_opportunities),  // leads marked as opportunity/interested
+      sends7d,
+      replies7d,
+      posReplies7d: num(s.total_opportunities),
       bookings7d:   0,
       totalLeads,
       contacted,
