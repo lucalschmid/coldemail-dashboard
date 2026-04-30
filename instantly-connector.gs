@@ -184,7 +184,9 @@ function statusLabel(status) {
 function buildSparkline(daily, today, days) {
   const map = {};
   daily.forEach(function(d) {
-    if (d.date) map[d.date] = num(d.contacted);
+    // new_leads_contacted = unique contacts per day (matches contacted_count in summary)
+    // d.contacted = total emails sent per day (inflated by follow-ups)
+    if (d.date) map[d.date] = num(d.new_leads_contacted || d.contacted);
   });
   const out = [];
   for (let i = days - 1; i >= 0; i--) out.push(map[fmtDate(daysAgo(today, i))] || 0);
@@ -193,7 +195,7 @@ function buildSparkline(daily, today, days) {
 
 function getLastSendDate(daily) {
   for (let i = daily.length - 1; i >= 0; i--) {
-    if (num(daily[i].contacted) > 0) return daily[i].date || null;
+    if (num(daily[i].new_leads_contacted || daily[i].contacted) > 0) return daily[i].date || null;
   }
   return null;
 }
@@ -233,4 +235,104 @@ function testAnalytics() {
 
 function testFullBuild() {
   Logger.log(JSON.stringify(buildDashboardData(), null, 2));
+}
+
+// ── Deep debug: compare raw API fields vs Instantly UI ────────
+// Run this, then compare logged values with what you see in Instantly.
+// Target: Cory "Job Specific Leads" campaign (update ID if needed).
+function testDebugCampaign() {
+  const opts  = fetchOpts();
+  const today = new Date();
+  const end   = fmtDate(today);
+  const start7 = fmtDate(daysAgo(today, 7));
+  const startAll = '2020-01-01'; // all-time window
+
+  // Find campaign by name substring (case-insensitive)
+  const TARGET = 'jobtitle';
+  const all = fetchCampaigns(opts);
+  const cory = all.filter(c => CLIENT_MAP[c.id] === 'Cory Woodward');
+  Logger.log('=== All Cory campaigns ===');
+  cory.forEach(c => Logger.log(c.id + ' | ' + c.name + ' | status:' + c.status));
+
+  const target = cory.find(c => c.name.toLowerCase().includes(TARGET));
+  if (!target) { Logger.log('Campaign not found — check TARGET string above'); return; }
+
+  Logger.log('\n=== ' + target.name + ' ===');
+  Logger.log('ID: ' + target.id);
+
+  // 7-day summary
+  const sum7Url = BASE_V2 + '/campaigns/analytics?id=' + target.id + '&start_date=' + start7 + '&end_date=' + end;
+  const s7 = safeJson(UrlFetchApp.fetch(sum7Url, opts));
+  const r7 = Array.isArray(s7) ? (s7[0] || {}) : (s7 || {});
+  Logger.log('\n--- 7-day summary (start=' + start7 + ') ---');
+  Logger.log('emails_sent_count:              ' + r7.emails_sent_count);
+  Logger.log('contacted_count:                ' + r7.contacted_count);
+  Logger.log('new_leads_contacted_count:      ' + r7.new_leads_contacted_count);
+  Logger.log('reply_count:                    ' + r7.reply_count);
+  Logger.log('reply_count_unique:             ' + r7.reply_count_unique);
+  Logger.log('reply_count_automatic:          ' + r7.reply_count_automatic);
+  Logger.log('reply_count_automatic_unique:   ' + r7.reply_count_automatic_unique);
+  Logger.log('total_opportunities:            ' + r7.total_opportunities);
+  Logger.log('leads_count:                    ' + r7.leads_count);
+  Logger.log('bounced_count:                  ' + r7.bounced_count);
+  Logger.log('open_count:                     ' + r7.open_count);
+  Logger.log('click_count:                    ' + r7.click_count);
+
+  // all-time summary
+  const sumAllUrl = BASE_V2 + '/campaigns/analytics?id=' + target.id + '&start_date=' + startAll + '&end_date=' + end;
+  const sAll = safeJson(UrlFetchApp.fetch(sumAllUrl, opts));
+  const rAll = Array.isArray(sAll) ? (sAll[0] || {}) : (sAll || {});
+  Logger.log('\n--- All-time summary (start=2020-01-01) ---');
+  Logger.log('emails_sent_count:              ' + rAll.emails_sent_count);
+  Logger.log('contacted_count:                ' + rAll.contacted_count);
+  Logger.log('new_leads_contacted_count:      ' + rAll.new_leads_contacted_count);
+  Logger.log('reply_count:                    ' + rAll.reply_count);
+  Logger.log('reply_count_unique:             ' + rAll.reply_count_unique);
+  Logger.log('total_opportunities:            ' + rAll.total_opportunities);
+  Logger.log('leads_count:                    ' + rAll.leads_count);
+  Logger.log('bounced_count:                  ' + rAll.bounced_count);
+
+  // 7-day daily — sum key fields
+  const dayUrl = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + target.id + '&start_date=' + start7 + '&end_date=' + end;
+  const dayRaw = safeJson(UrlFetchApp.fetch(dayUrl, opts));
+  const daily  = Array.isArray(dayRaw) ? dayRaw : (dayRaw.items || []);
+  let dSent=0, dContacted=0, dReplies=0, dUniqReplies=0, dAutoUniq=0, dOpps=0, dUniqOpps=0;
+  daily.forEach(function(d) {
+    dSent        += num(d.sent);
+    dContacted   += num(d.contacted);
+    dReplies     += num(d.replies);
+    dUniqReplies += num(d.unique_replies);
+    dAutoUniq    += num(d.unique_replies_automatic);
+    dOpps        += num(d.opportunities);
+    dUniqOpps    += num(d.unique_opportunities);
+  });
+  Logger.log('\n--- 7-day daily SUM (per-day rows: ' + daily.length + ') ---');
+  Logger.log('sent sum:                       ' + dSent);
+  Logger.log('contacted sum:                  ' + dContacted);
+  Logger.log('replies sum:                    ' + dReplies);
+  Logger.log('unique_replies sum:             ' + dUniqReplies);
+  Logger.log('unique_replies_automatic sum:   ' + dAutoUniq);
+  Logger.log('opportunities sum:              ' + dOpps);
+  Logger.log('unique_opportunities sum:       ' + dUniqOpps);
+
+  // Computed rates — compare with Instantly UI
+  const sent  = num(r7.emails_sent_count);
+  const cont  = num(r7.contacted_count);
+  const repl  = num(r7.reply_count);
+  const replU = num(r7.reply_count_unique) + num(r7.reply_count_automatic_unique);
+  const opps  = num(r7.total_opportunities);
+  Logger.log('\n--- Computed rates (compare with Instantly UI) ---');
+  Logger.log('Instantly shows → Emails sent: 968  |  Reply rate: 1.65% (16)  |  Pos reply rate: 6.25% (1)  |  Opps: 1');
+  Logger.log('reply / emails_sent:            ' + pct(repl,  sent)  + ' (' + repl  + '/' + sent  + ')');
+  Logger.log('uniq_reply / emails_sent:       ' + pct(replU, sent)  + ' (' + replU + '/' + sent  + ')');
+  Logger.log('reply / contacted:              ' + pct(repl,  cont)  + ' (' + repl  + '/' + cont  + ')');
+  Logger.log('uniq_reply / contacted:         ' + pct(replU, cont)  + ' (' + replU + '/' + cont  + ')');
+  Logger.log('opps(sum7) / reply:             ' + pct(dOpps, dReplies) + ' (' + dOpps + '/' + dReplies + ')');
+  Logger.log('opps(sum7) / uniq_reply:        ' + pct(dOpps, dUniqReplies+dAutoUniq) + ' (' + dOpps + '/' + (dUniqReplies+dAutoUniq) + ')');
+  Logger.log('total_opps(alltime) / reply:    ' + pct(opps,  repl)  + ' (' + opps  + '/' + repl  + ')');
+}
+
+function pct(a, b) {
+  if (!b) return '—';
+  return (a / b * 100).toFixed(2) + '%';
 }

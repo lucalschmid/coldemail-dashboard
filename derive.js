@@ -43,12 +43,14 @@ window.CSD.format = {
 
 window.CSD.derive = function derive(campaign, thresholds) {
   const sends = campaign.sends7d || 0;
+  const replies = campaign.replies7d || 0;
   const pos = campaign.posReplies7d || 0;
   const bookings = campaign.bookings7d || 0;
   const dailyRate = sends / 7;
   const runwayDays = dailyRate > 0 ? campaign.leadsLeft / dailyRate : (campaign.leadsLeft > 0 ? Infinity : 0);
 
-  const prr = sends > 0 ? pos / sends : null;
+  // PRR = pos / replies (Instantly definition: of all who replied, how many were positive)
+  const prr = replies > 0 ? pos / replies : null;
   const abr = sends > 0 ? bookings / sends : null;
 
   // Days since last send
@@ -63,7 +65,7 @@ window.CSD.derive = function derive(campaign, thresholds) {
 
   // Severity: 0=ok, 1=warn, 2=critical
   let prrSev = 0;
-  if (prr !== null && sends >= 200) {
+  if (prr !== null && replies >= 10) {
     if (prr < thresholds.prrCritical) prrSev = 2;
     else if (prr < thresholds.prrWarning) prrSev = 1;
   }
@@ -109,8 +111,8 @@ window.CSD.derive = function derive(campaign, thresholds) {
 };
 
 window.CSD.DEFAULT_THRESHOLDS = {
-  prrWarning: 0.0035,   // 0.35% — agency benchmark
-  prrCritical: 0.0025,  // 0.25%
+  prrWarning: 0.05,    // 5% of replies — pos replies / total replies
+  prrCritical: 0.02,   // 2%
   abrWarning: 0.002,    // 0.20%
   abrCritical: 0.001,   // 0.10%
   runwayWarning: 14,    // days
@@ -120,7 +122,7 @@ window.CSD.DEFAULT_THRESHOLDS = {
 };
 
 window.CSD.THRESHOLD_DOCS = {
-  prr: 'Positive Reply Rate. Industry benchmark for warm cold email is 0.35%+. Below 0.25% suggests targeting, copy, or deliverability is broken.',
+  prr: 'Positive Reply Rate. Of all replies, how many were positive (opportunities). Benchmark: 5%+. Below 2% means replies aren\'t converting — check copy quality or targeting.',
   abr: 'Appointment Booking Rate. 0.20% on sends is healthy for high-ticket B2B. Below 0.10% means replies aren\'t converting to calls.',
   runway: 'Days of leads remaining at the current 7-day send rate. Refill the list before it hits zero or inboxes sit idle.',
 };
