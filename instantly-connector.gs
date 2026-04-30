@@ -109,27 +109,20 @@ function buildDashboardData() {
   const campaigns = fetchCampaigns(opts);
   if (!campaigns.length) return { generated_at: new Date().toISOString(), campaigns: [] };
 
+  const start7 = fmtDate(daysAgo(today, 7));
+
   const result = campaigns.map(function(c) {
-    // 30-day daily data — find last 7 ACTIVE sending days (matches Instantly's "last 7 days")
+    // 7-day summary for sends/replies
+    const sumUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id + '&start_date=' + start7 + '&end_date=' + end;
+    const sumRes = UrlFetchApp.fetch(sumUrl, opts);
+    const sumRaw = safeJson(sumRes);
+    const s      = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
+
+    // 30-day daily for sparkline + lastSendDate
     const dayUrl = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + c.id + '&start_date=' + start30 + '&end_date=' + end;
     const dayRes = UrlFetchApp.fetch(dayUrl, opts);
     const dayRaw = safeJson(dayRes);
     const daily  = Array.isArray(dayRaw) ? dayRaw : (dayRaw.items || dayRaw.data || []);
-
-    // Last 7 days with any sends
-    // v2 daily fields: contacted, unique_replies, unique_replies_automatic
-    const activeDays = daily
-      .filter(function(d) { return num(d.contacted) > 0; })
-      .slice(-7);
-
-    const sends7d   = activeDays.reduce(function(s, d) { return s + num(d.contacted); }, 0);
-    const replies7d = activeDays.reduce(function(s, d) { return s + num(d.unique_replies) + num(d.unique_replies_automatic); }, 0);
-
-    // All-time summary for campaign totals + opportunities
-    const sumUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id;
-    const sumRes = UrlFetchApp.fetch(sumUrl, opts);
-    const sumRaw = safeJson(sumRes);
-    const s      = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
 
     const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
     const lastSendDate = getLastSendDate(daily);
@@ -141,8 +134,8 @@ function buildDashboardData() {
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      sends7d,
-      replies7d,
+      sends7d:      num(s.contacted_count),
+      replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),
       posReplies7d: num(s.total_opportunities),
       bookings7d:   0,
       totalLeads,
