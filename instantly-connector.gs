@@ -109,16 +109,8 @@ function buildDashboardData() {
   const campaigns = fetchCampaigns(opts);
   if (!campaigns.length) return { generated_at: new Date().toISOString(), campaigns: [] };
 
-  const start7 = fmtDate(daysAgo(today, 7));
-
   const result = campaigns.map(function(c) {
-    // 7-day summary for sends/replies
-    const sumUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id + '&start_date=' + start7 + '&end_date=' + end;
-    const sumRes = UrlFetchApp.fetch(sumUrl, opts);
-    const sumRaw = safeJson(sumRes);
-    const s      = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
-
-    // 30-day daily for sparkline + lastSendDate
+    // Fetch 30-day daily first — needed to determine lastSendDate for window anchoring
     const dayUrl = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + c.id + '&start_date=' + start30 + '&end_date=' + end;
     const dayRes = UrlFetchApp.fetch(dayUrl, opts);
     const dayRaw = safeJson(dayRes);
@@ -126,8 +118,21 @@ function buildDashboardData() {
 
     const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
     const lastSendDate = getLastSendDate(daily);
-    const totalLeads   = num(s.leads_count);
-    const contacted    = num(s.contacted_count);
+
+    // Anchor 7-day stats window to last active send date.
+    // Instantly "last 7 days" ends at the last day the campaign actively sent —
+    // so paused/completed campaigns show stats for their last active period, not today.
+    const anchor   = lastSendDate ? new Date(lastSendDate + 'T12:00:00') : today;
+    const sumEnd   = fmtDate(daysAgo(anchor, -1)); // exclusive end = day after last send
+    const sumStart = fmtDate(daysAgo(anchor, 6));  // 7-day window: 6 days before last send
+
+    const sumUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id + '&start_date=' + sumStart + '&end_date=' + sumEnd;
+    const sumRes = UrlFetchApp.fetch(sumUrl, opts);
+    const sumRaw = safeJson(sumRes);
+    const s      = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
+
+    const totalLeads = num(s.leads_count);
+    const contacted  = num(s.contacted_count);
 
     return {
       id:           c.id,
@@ -247,14 +252,13 @@ function testDebugCampaign() {
   const start7 = fmtDate(daysAgo(today, 7));
   const startAll = '2020-01-01'; // all-time window
 
-  // Find campaign by name substring (case-insensitive)
-  const TARGET = 'jobtitle';
+  // Find campaign by name substring (case-insensitive) — searches ALL campaigns
+  const TARGET = 'inboxes';
   const all = fetchCampaigns(opts);
-  const cory = all.filter(c => CLIENT_MAP[c.id] === 'Cory Woodward');
-  Logger.log('=== All Cory campaigns ===');
-  cory.forEach(c => Logger.log(c.id + ' | ' + c.name + ' | status:' + c.status));
+  Logger.log('=== All campaigns ===');
+  all.forEach(c => Logger.log(c.id + ' | ' + c.name + ' | status:' + c.status));
 
-  const target = cory.find(c => c.name.toLowerCase().includes(TARGET));
+  const target = all.find(c => c.name.toLowerCase().includes(TARGET));
   if (!target) { Logger.log('Campaign not found — check TARGET string above'); return; }
 
   Logger.log('\n=== ' + target.name + ' ===');
@@ -264,19 +268,21 @@ function testDebugCampaign() {
   const sum7Url = BASE_V2 + '/campaigns/analytics?id=' + target.id + '&start_date=' + start7 + '&end_date=' + end;
   const s7 = safeJson(UrlFetchApp.fetch(sum7Url, opts));
   const r7 = Array.isArray(s7) ? (s7[0] || {}) : (s7 || {});
-  Logger.log('\n--- 7-day summary (start=' + start7 + ') ---');
-  Logger.log('emails_sent_count:              ' + r7.emails_sent_count);
-  Logger.log('contacted_count:                ' + r7.contacted_count);
-  Logger.log('new_leads_contacted_count:      ' + r7.new_leads_contacted_count);
-  Logger.log('reply_count:                    ' + r7.reply_count);
-  Logger.log('reply_count_unique:             ' + r7.reply_count_unique);
-  Logger.log('reply_count_automatic:          ' + r7.reply_count_automatic);
-  Logger.log('reply_count_automatic_unique:   ' + r7.reply_count_automatic_unique);
-  Logger.log('total_opportunities:            ' + r7.total_opportunities);
-  Logger.log('leads_count:                    ' + r7.leads_count);
-  Logger.log('bounced_count:                  ' + r7.bounced_count);
-  Logger.log('open_count:                     ' + r7.open_count);
-  Logger.log('click_count:                    ' + r7.click_count);
+  Logger.log('\n--- 7-day summary RAW JSON (start=' + start7 + ') ---');
+  Logger.log(JSON.stringify(r7, null, 2));
+
+  // Test end_date variants: is end_date exclusive (missing today)?
+  var tomorrow = fmtDate(daysAgo(today, -1));
+  Logger.log('\n--- end_date test (start=7 days ago, vary end) ---');
+  var endVariants = [fmtDate(daysAgo(today, 1)), end, tomorrow];
+  var endLabels   = ['yesterday (' + fmtDate(daysAgo(today,1)) + ')', 'today (' + end + ')', 'tomorrow (' + tomorrow + ')'];
+  for (var i = 0; i < endVariants.length; i++) {
+    var eUrl = BASE_V2 + '/campaigns/analytics?id=' + target.id + '&start_date=' + start7 + '&end_date=' + endVariants[i];
+    var eRaw = safeJson(UrlFetchApp.fetch(eUrl, opts));
+    var e = Array.isArray(eRaw) ? (eRaw[0] || {}) : (eRaw || {});
+    var eSum = num(e.reply_count_unique) + num(e.reply_count_automatic_unique);
+    Logger.log('end=' + endLabels[i] + ': contacted=' + e.contacted_count + '  reply_unique=' + e.reply_count_unique + '  auto_unique=' + e.reply_count_automatic_unique + '  SUM=' + eSum);
+  }
 
   // all-time summary
   const sumAllUrl = BASE_V2 + '/campaigns/analytics?id=' + target.id + '&start_date=' + startAll + '&end_date=' + end;
@@ -292,28 +298,36 @@ function testDebugCampaign() {
   Logger.log('leads_count:                    ' + rAll.leads_count);
   Logger.log('bounced_count:                  ' + rAll.bounced_count);
 
-  // 7-day daily — sum key fields
-  const dayUrl = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + target.id + '&start_date=' + start7 + '&end_date=' + end;
+  // 30-day daily — show each day so we can see active days vs inactive
+  const start30 = fmtDate(daysAgo(today, 30));
+  const dayUrl = BASE_V2 + '/campaigns/analytics/daily?campaign_id=' + target.id + '&start_date=' + start30 + '&end_date=' + end;
   const dayRaw = safeJson(UrlFetchApp.fetch(dayUrl, opts));
   const daily  = Array.isArray(dayRaw) ? dayRaw : (dayRaw.items || []);
-  let dSent=0, dContacted=0, dReplies=0, dUniqReplies=0, dAutoUniq=0, dOpps=0, dUniqOpps=0;
+  Logger.log('\n--- 30-day daily (one row per day, active days only) ---');
   daily.forEach(function(d) {
-    dSent        += num(d.sent);
-    dContacted   += num(d.contacted);
-    dReplies     += num(d.replies);
-    dUniqReplies += num(d.unique_replies);
-    dAutoUniq    += num(d.unique_replies_automatic);
-    dOpps        += num(d.opportunities);
-    dUniqOpps    += num(d.unique_opportunities);
+    var newC = num(d.new_leads_contacted);
+    var cont = num(d.contacted);
+    if (newC > 0 || cont > 0) {
+      Logger.log(d.date + '  new_contacted=' + newC + '  contacted=' + cont + '  uniq_replies=' + num(d.unique_replies) + '  auto_uniq=' + num(d.unique_replies_automatic));
+    }
   });
-  Logger.log('\n--- 7-day daily SUM (per-day rows: ' + daily.length + ') ---');
-  Logger.log('sent sum:                       ' + dSent);
-  Logger.log('contacted sum:                  ' + dContacted);
-  Logger.log('replies sum:                    ' + dReplies);
-  Logger.log('unique_replies sum:             ' + dUniqReplies);
-  Logger.log('unique_replies_automatic sum:   ' + dAutoUniq);
-  Logger.log('opportunities sum:              ' + dOpps);
-  Logger.log('unique_opportunities sum:       ' + dUniqOpps);
+
+  // Last 7 active days sum
+  var activeDays = daily.filter(function(d) { return num(d.new_leads_contacted || d.contacted) > 0; });
+  var last7Active = activeDays.slice(-7);
+  var a7Contacted=0, a7NewContacted=0, a7Replies=0, a7AutoUniq=0;
+  last7Active.forEach(function(d) {
+    a7Contacted    += num(d.contacted);
+    a7NewContacted += num(d.new_leads_contacted);
+    a7Replies      += num(d.unique_replies);
+    a7AutoUniq     += num(d.unique_replies_automatic);
+  });
+  Logger.log('\n--- Last 7 ACTIVE days sum (dates: ' + (last7Active[0]||{}).date + ' to ' + (last7Active[last7Active.length-1]||{}).date + ') ---');
+  Logger.log('contacted sum:          ' + a7Contacted + '  (= emails_sent equiv)');
+  Logger.log('new_contacted sum:      ' + a7NewContacted + '  ← does this = 1920?');
+  Logger.log('unique_replies sum:     ' + a7Replies);
+  Logger.log('auto_uniq sum:          ' + a7AutoUniq);
+  Logger.log('replies total:          ' + (a7Replies + a7AutoUniq) + '  ← does this = 38?');
 
   // Computed rates — compare with Instantly UI
   const sent  = num(r7.emails_sent_count);
@@ -322,7 +336,7 @@ function testDebugCampaign() {
   const replU = num(r7.reply_count_unique) + num(r7.reply_count_automatic_unique);
   const opps  = num(r7.total_opportunities);
   Logger.log('\n--- Computed rates (compare with Instantly UI) ---');
-  Logger.log('Instantly shows → Emails sent: 968  |  Reply rate: 1.65% (16)  |  Pos reply rate: 6.25% (1)  |  Opps: 1');
+  Logger.log('Instantly shows → Sequence started: 1920  |  Reply rate: 1.98% (38)  |  Pos reply rate: 2.63% (1)  |  Opps: 1');
   Logger.log('reply / emails_sent:            ' + pct(repl,  sent)  + ' (' + repl  + '/' + sent  + ')');
   Logger.log('uniq_reply / emails_sent:       ' + pct(replU, sent)  + ' (' + replU + '/' + sent  + ')');
   Logger.log('reply / contacted:              ' + pct(repl,  cont)  + ' (' + repl  + '/' + cont  + ')');
