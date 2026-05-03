@@ -140,6 +140,10 @@ function App() {
   const [dragCampaignId, setDragCampaignId] = useState(null);
   const [dragOverClient, setDragOverClient] = useState(null);
 
+  // Add-list modal
+  const [addListModal, setAddListModal] = useState(null); // { categoryId } | null
+  const [addListForm, setAddListForm] = useState({ name: '', status: 'Active', lastActive: '', leadCount: '', runningText: '', csvData: null, csvName: '' });
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tweaks.theme);
   }, [tweaks.theme]);
@@ -206,6 +210,15 @@ function App() {
     const delClientSet = new Set(deletedClientNames);
     const groups = window.CSD.groupByClient(derived).filter(g => !delClientSet.has(g.client));
     const existing = new Set(groups.map(g => g.client));
+    // Always pin Compound Scaling as a client
+    const PINNED = 'Compound Scaling';
+    if (!existing.has(PINNED) && !delClientSet.has(PINNED)) {
+      groups.unshift({ client: PINNED, campaigns: [], sends: 0, replies: 0, pos: 0, bookings: 0,
+        leadsLeft: 0, totalLeads: 0, active: 0, flagged: 0, warned: 0,
+        stale: 0, canRerun: 0, overall: 0, dailyRate: 0,
+        runwayDays: Infinity, sparkline: [], replyRate: null, prr: null });
+      existing.add(PINNED);
+    }
     customClients.forEach(c => {
       const name = clientNames[c.name] || c.name;
       if (!existing.has(name) && !delClientSet.has(name)) groups.push({
@@ -742,6 +755,32 @@ function App() {
     setManualLists(next);
     try { localStorage.setItem('csd:manual-lists:v1', JSON.stringify(next)); } catch (e) {}
   };
+  const submitAddList = () => {
+    if (!addListModal) return;
+    const id = 'mll-' + Date.now();
+    const leadCount = addListForm.csvData
+      ? parseCSVLeadCount(addListForm.csvData)
+      : (parseInt(addListForm.leadCount) || 0);
+    const today = new Date().toISOString().slice(0, 10);
+    const newList = {
+      id,
+      categoryId: addListModal.categoryId,
+      name: addListForm.name.trim() || 'New list',
+      status: addListForm.status,
+      lastActive: addListForm.lastActive || today,
+      leadCount,
+      runningText: addListForm.runningText,
+      csvData: addListForm.csvData,
+      csvName: addListForm.csvName,
+    };
+    const next = [...manualLists, newList];
+    setManualLists(next);
+    try { localStorage.setItem('csd:manual-lists:v1', JSON.stringify(next)); } catch (e) {}
+    const nextOpen = { ...openLLGroups, [addListModal.categoryId]: true };
+    setOpenLLGroups(nextOpen);
+    try { localStorage.setItem('csd:ll-open:v1', JSON.stringify(nextOpen)); } catch (e) {}
+    setAddListModal(null);
+  };
 
   // ---------- Lead Lists helpers ----------
   const saveListName = (id, name) => {
@@ -832,7 +871,11 @@ function App() {
                     React.createElement('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' }))),
                 React.createElement('button', {
                   className: 'csd-ll-add-btn',
-                  onClick: e => { e.stopPropagation(); addManualList(cat.id); },
+                  onClick: e => {
+                    e.stopPropagation();
+                    setAddListModal({ categoryId: cat.id });
+                    setAddListForm({ name: '', status: 'Active', lastActive: new Date().toISOString().slice(0, 10), leadCount: '', runningText: '', csvData: null, csvName: '' });
+                  },
                 }, '+ Add list'),
                 React.createElement('button', {
                   className: 'csd-ll-action-btn delete',
@@ -929,6 +972,15 @@ function App() {
                                 onClick: () => startEdit('runningText', l.runningText || ''),
                               }, l.runningText || React.createElement('span', { style: { opacity: 0.4 } }, 'Add…'))),
                         React.createElement('span', { className: 'csd-ll-actions' },
+                          l.csvData && React.createElement('button', {
+                            className: 'csd-ll-action-btn',
+                            title: 'Download CSV',
+                            onClick: () => downloadBlob((l.csvName || l.name).replace(/\s+/g, '_'), l.csvData),
+                          },
+                            React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
+                              React.createElement('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+                              React.createElement('polyline', { points: '7 10 12 15 17 10' }),
+                              React.createElement('line', { x1: 12, y1: 15, x2: 12, y2: 3 }))),
                           React.createElement('button', {
                             className: 'csd-ll-action-btn delete',
                             title: 'Delete list',
@@ -965,6 +1017,87 @@ function App() {
       onClearResolved: clearResolved,
       onJump: onJumpToCampaign,
     }),
+    addListModal && React.createElement('div', {
+      className: 'csd-modal-overlay',
+      onClick: () => setAddListModal(null),
+    },
+      React.createElement('div', { className: 'csd-modal', onClick: e => e.stopPropagation() },
+        React.createElement('div', { className: 'csd-modal-header' },
+          React.createElement('h2', null, 'Add lead list'),
+          React.createElement('button', { className: 'csd-modal-close', onClick: () => setAddListModal(null) },
+            React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' },
+              React.createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+              React.createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 })))),
+        React.createElement('div', { className: 'csd-modal-body' },
+          React.createElement('div', { className: 'csd-modal-field' },
+            React.createElement('label', null, 'List name'),
+            React.createElement('input', {
+              className: 'csd-modal-input',
+              placeholder: 'e.g. Hospital CFOs — Wave 1',
+              value: addListForm.name,
+              autoFocus: true,
+              onChange: e => setAddListForm(f => ({ ...f, name: e.target.value })),
+              onKeyDown: e => { if (e.key === 'Enter') submitAddList(); if (e.key === 'Escape') setAddListModal(null); },
+            })),
+          React.createElement('div', { className: 'csd-modal-field' },
+            React.createElement('label', null, 'Status'),
+            React.createElement('div', { className: 'csd-segment' },
+              React.createElement('button', {
+                className: addListForm.status === 'Active' ? 'active' : '',
+                onClick: () => setAddListForm(f => ({ ...f, status: 'Active' })),
+              }, 'Active'),
+              React.createElement('button', {
+                className: addListForm.status === 'Paused' ? 'active' : '',
+                onClick: () => setAddListForm(f => ({ ...f, status: 'Paused' })),
+              }, 'Paused'))),
+          React.createElement('div', { className: 'csd-modal-row' },
+            React.createElement('div', { className: 'csd-modal-field' },
+              React.createElement('label', null, 'Last active'),
+              React.createElement('input', {
+                type: 'date',
+                className: 'csd-modal-input',
+                value: addListForm.lastActive,
+                onChange: e => setAddListForm(f => ({ ...f, lastActive: e.target.value })),
+              })),
+            React.createElement('div', { className: 'csd-modal-field' },
+              React.createElement('label', null, 'Lead count'),
+              React.createElement('input', {
+                type: 'number',
+                className: 'csd-modal-input',
+                placeholder: '0',
+                value: addListForm.leadCount,
+                min: 0,
+                onChange: e => setAddListForm(f => ({ ...f, leadCount: e.target.value })),
+              }))),
+          React.createElement('div', { className: 'csd-modal-field' },
+            React.createElement('label', null, 'Running for'),
+            React.createElement('input', {
+              className: 'csd-modal-input',
+              placeholder: 'e.g. 3 weeks, since Jan 5, day 23',
+              value: addListForm.runningText,
+              onChange: e => setAddListForm(f => ({ ...f, runningText: e.target.value })),
+            })),
+          React.createElement('div', { className: 'csd-modal-field' },
+            React.createElement('label', null, 'Upload CSV',
+              React.createElement('span', { style: { fontWeight: 400, color: 'var(--d-fg-mute)', marginLeft: 6 } }, '— auto-fills lead count')),
+            React.createElement('div', { className: 'csd-modal-upload' },
+              React.createElement('button', {
+                className: 'csd-ll-add-btn',
+                type: 'button',
+                onClick: () => openFilePicker((name, text) => {
+                  setAddListForm(f => ({ ...f, csvData: text, csvName: name, leadCount: parseCSVLeadCount(text) }));
+                }),
+              }, '+ Choose file'),
+              React.createElement('span', { className: 'csd-modal-filename' },
+                addListForm.csvName
+                  ? React.createElement(React.Fragment, null,
+                      React.createElement('span', { style: { color: 'var(--d-positive)' } }, '✓ '),
+                      addListForm.csvName,
+                      ' (' + (addListForm.leadCount || 0) + ' leads)')
+                  : React.createElement('span', { style: { color: 'var(--d-fg-mute)' } }, 'No file selected'))))),
+        React.createElement('div', { className: 'csd-modal-footer' },
+          React.createElement('button', { className: 'csd-btn-ghost', onClick: () => setAddListModal(null) }, 'Cancel'),
+          React.createElement('button', { className: 'csd-btn-primary', onClick: submitAddList }, 'Add list')))),
     React.createElement(TweaksPanel, null,
       React.createElement(TweakSection, { title: 'Theme & density' },
         React.createElement(TweakRadio, {

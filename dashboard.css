@@ -1719,6 +1719,106 @@ html, body { margin: 0; padding: 0; }
   background: var(--d-bg-soft);
 }
 
+/* ---------- Add-list modal ---------- */
+.csd-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--d-overlay);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 24px;
+}
+.csd-modal {
+  background: var(--d-card-bg);
+  border: 1px solid var(--d-rule);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+}
+.csd-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--d-rule);
+}
+.csd-modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--display);
+  letter-spacing: -0.02em;
+  color: var(--d-fg);
+}
+.csd-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--d-fg-mute);
+  padding: 4px;
+  border-radius: 6px;
+  line-height: 0;
+  transition: color 120ms, background 120ms;
+}
+.csd-modal-close:hover { color: var(--d-fg-2); background: var(--d-bg-soft); }
+.csd-modal-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.csd-modal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.csd-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.csd-modal-field label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--d-fg-mute);
+}
+.csd-modal-input {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--d-fg);
+  background: var(--d-bg-soft);
+  border: 1px solid var(--d-rule);
+  border-radius: 8px;
+  padding: 8px 12px;
+  outline: none;
+  width: 100%;
+  transition: border-color 140ms;
+}
+.csd-modal-input:focus { border-color: var(--d-accent); }
+.csd-modal-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.csd-modal-filename {
+  font-size: 12px;
+  color: var(--d-fg-3);
+}
+.csd-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--d-rule);
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .csd { grid-template-columns: 1fr; }
