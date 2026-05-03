@@ -860,7 +860,10 @@ function App() {
                       },
                     })
                   : React.createElement('span', { className: 'csd-ll-client' }, cat.name),
-                React.createElement('span', { className: 'csd-ll-count' }, catLists.length + ' ' + (catLists.length === 1 ? 'list' : 'lists'))),
+                React.createElement('span', { className: 'csd-ll-count' },
+                  catLists.length + ' ' + (catLists.length === 1 ? 'list' : 'lists'),
+                  catLists.length > 0 && React.createElement('span', { className: 'csd-ll-count-sep' },
+                    ' · ' + fmtA.num(catLists.reduce((s, l) => s + (l.leadCount || 0), 0)) + ' leads'))),
               React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 } },
                 React.createElement('button', {
                   className: 'csd-ll-rename-btn',
