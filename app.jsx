@@ -828,7 +828,9 @@ function App() {
           React.createElement('h3', null, 'No lead list categories'),
           React.createElement('p', null, 'Click "+ Add category" to create your first category, then add lists inside it.'))
       : llCategories.map((cat) => {
-          const catLists = manualLists.filter(l => l.categoryId === cat.id);
+          const catLists = manualLists
+            .filter(l => l.categoryId === cat.id)
+            .sort((a, b) => (a.status === 'Active' ? 0 : 1) - (b.status === 'Active' ? 0 : 1));
           const isOpen = !!openLLGroups[cat.id];
           const initial = cat.name.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
 
@@ -916,7 +918,7 @@ function App() {
                         setEditingLL(null);
                       };
 
-                      return React.createElement('div', { key: l.id, className: 'csd-ll-row csd-ll-row-manual' },
+                      return React.createElement('div', { key: l.id, className: 'csd-ll-row csd-ll-row-manual csd-ll-row-' + l.status.toLowerCase() },
                         React.createElement('span', { className: 'csd-ll-name-cell' },
                           isEditingName
                             ? React.createElement('input', {
@@ -942,6 +944,8 @@ function App() {
                                 onBlur: () => commitEdit('lastActive'),
                                 onKeyDown: e => { if (e.key === 'Enter') commitEdit('lastActive'); if (e.key === 'Escape') setEditingLL(null); },
                               })
+                            : l.status === 'Active'
+                            ? React.createElement('span', { className: 'csd-ll-currently-active' }, 'Currently active')
                             : React.createElement('span', { className: 'csd-ll-editable', title: 'Click to edit', onClick: () => startEdit('lastActive', l.lastActive || todayStr) },
                                 l.lastActive
                                   ? new Date(l.lastActive + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
