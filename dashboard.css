@@ -1581,6 +1581,144 @@ html, body { margin: 0; padding: 0; }
   color: var(--d-fg-mute);
 }
 
+/* ---------- Brand logo ---------- */
+.brand-logo {
+  height: 24px;
+  width: auto;
+  max-width: 60px;
+  border-radius: 5px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.csd-sidebar-brand { font-size: 13.5px; }
+
+/* ---------- Manual lead list overrides ---------- */
+.csd-ll-thead-manual,
+.csd-ll-row-manual {
+  grid-template-columns: minmax(0, 1fr) 100px 120px 80px 90px 130px 44px;
+}
+
+/* Status as a clickable button */
+.csd-ll-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: none;
+  border: none;
+  padding: 3px 7px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--d-fg-3);
+  transition: background 140ms, color 140ms;
+}
+.csd-ll-status-btn .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--d-fg-mute);
+  flex-shrink: 0;
+}
+.csd-ll-status-btn.active { color: var(--d-positive); }
+.csd-ll-status-btn.active .dot { background: var(--d-positive); }
+.csd-ll-status-btn.paused { color: var(--d-fg-3); }
+.csd-ll-status-btn:hover { background: var(--d-bg-soft); }
+
+/* Editable cell style */
+.csd-ll-editable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 3px;
+  margin: -1px -3px;
+  transition: background 120ms;
+}
+.csd-ll-row:hover .csd-ll-editable:hover {
+  background: var(--d-bg-soft);
+  outline: 1px solid var(--d-rule-strong);
+}
+
+/* Inline date and number inputs */
+.csd-ll-date-input,
+.csd-ll-number-input {
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--d-fg);
+  background: var(--d-bg-soft);
+  border: 1px solid var(--d-accent);
+  border-radius: 5px;
+  padding: 2px 6px;
+  outline: none;
+  width: 100%;
+}
+.csd-ll-number-input { width: 80px; }
+
+/* ---------- Unassigned campaigns (clients view) ---------- */
+.csd-unassigned-section {
+  margin-top: 28px;
+  border: 1px dashed var(--d-rule-strong);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.csd-unassigned-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--d-fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--d-bg-soft);
+  border-bottom: 1px solid var(--d-rule);
+}
+.csd-unassigned-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--d-fg-mute);
+  margin-left: 2px;
+}
+.csd-unassigned-list {
+  display: flex;
+  flex-direction: column;
+}
+.csd-unassigned-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--d-rule);
+  cursor: grab;
+  transition: background 140ms;
+  user-select: none;
+}
+.csd-unassigned-row:last-child { border-bottom: 0; }
+.csd-unassigned-row:hover { background: var(--d-row-hover); }
+.csd-unassigned-row.dragging { opacity: 0.5; }
+.csd-unassigned-row:active { cursor: grabbing; }
+.drag-handle { color: var(--d-fg-mute); flex-shrink: 0; }
+.csd-unassigned-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--d-fg-2);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Drop target highlight on client cards */
+.csd-clientcard.drag-over {
+  outline: 2px solid var(--d-accent);
+  outline-offset: -2px;
+  background: var(--d-bg-soft);
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1100px) {
   .csd { grid-template-columns: 1fr; }
