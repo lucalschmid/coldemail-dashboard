@@ -210,10 +210,12 @@ function App() {
     const delClientSet = new Set(deletedClientNames);
     const groups = window.CSD.groupByClient(derived).filter(g => !delClientSet.has(g.client));
     const existing = new Set(groups.map(g => g.client));
-    // Always pin Compound Scaling as a client
+    // Always pin Compound Scaling — ignores deletion, always first
     const PINNED = 'Compound Scaling';
-    if (!existing.has(PINNED) && !delClientSet.has(PINNED)) {
-      groups.unshift({ client: PINNED, campaigns: [], sends: 0, replies: 0, pos: 0, bookings: 0,
+    if (!existing.has(PINNED)) {
+      // Pull in any campaigns that belong to it even if the "client" was deleted
+      const pinnedGroup = window.CSD.groupByClient(derived).find(g => g.client === PINNED);
+      groups.unshift(pinnedGroup || { client: PINNED, campaigns: [], sends: 0, replies: 0, pos: 0, bookings: 0,
         leadsLeft: 0, totalLeads: 0, active: 0, flagged: 0, warned: 0,
         stale: 0, canRerun: 0, overall: 0, dailyRate: 0,
         runwayDays: Infinity, sparkline: [], replyRate: null, prr: null });
@@ -560,7 +562,7 @@ function App() {
                 React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' },
                   React.createElement('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }),
                   React.createElement('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' }))),
-              React.createElement('button', {
+              g.client !== 'Compound Scaling' && React.createElement('button', {
                 className: 'csd-clientcard-edit-btn',
                 title: 'Delete client',
                 onClick: e => { e.stopPropagation(); deleteClient(g.client); },
