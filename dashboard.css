@@ -1645,6 +1645,22 @@ html, body { margin: 0; padding: 0; }
   opacity: 0.72;
 }
 .csd-ll-row-paused:hover { opacity: 1; }
+/* Never run row — neutral, clearly unused */
+.csd-ll-row-never-run {
+  border-left: 3px solid var(--d-rule-strong);
+  padding-left: 15px;
+  opacity: 0.55;
+}
+.csd-ll-row-never-run:hover { opacity: 1; }
+
+/* Never run status pill */
+.csd-ll-status-btn.never-run {
+  background: var(--d-bg-soft);
+  color: var(--d-fg-mute);
+  border-color: var(--d-rule-strong);
+  font-style: italic;
+}
+.csd-ll-status-btn.never-run .dot { background: var(--d-rule-strong); }
 
 /* "Currently active" label in last-active column */
 .csd-ll-currently-active {

@@ -832,7 +832,10 @@ function App() {
       : llCategories.map((cat) => {
           const catLists = manualLists
             .filter(l => l.categoryId === cat.id)
-            .sort((a, b) => (a.status === 'Active' ? 0 : 1) - (b.status === 'Active' ? 0 : 1));
+            .sort((a, b) => {
+              const o = { 'Active': 0, 'Paused': 1, 'Never run': 2 };
+              return (o[a.status] ?? 1) - (o[b.status] ?? 1);
+            });
           const isOpen = !!openLLGroups[cat.id];
           const initial = cat.name.split(/\s+/).map(s => s[0]).slice(0, 2).join('').toUpperCase();
 
@@ -923,7 +926,7 @@ function App() {
                         setEditingLL(null);
                       };
 
-                      return React.createElement('div', { key: l.id, className: 'csd-ll-row csd-ll-row-manual csd-ll-row-' + l.status.toLowerCase() },
+                      return React.createElement('div', { key: l.id, className: 'csd-ll-row csd-ll-row-manual csd-ll-row-' + (l.status === 'Active' ? 'active' : l.status === 'Paused' ? 'paused' : 'never-run') },
                         React.createElement('span', { className: 'csd-ll-name-cell' },
                           isEditingName
                             ? React.createElement('input', {
@@ -935,8 +938,8 @@ function App() {
                             : React.createElement('span', { className: 'csd-ll-name csd-ll-editable', title: 'Click to rename', onClick: () => startEdit('name', l.name) }, l.name)),
                         React.createElement('span', null,
                           React.createElement('button', {
-                            className: 'csd-ll-status-btn ' + l.status.toLowerCase(),
-                            onClick: () => updateManualList(l.id, 'status', l.status === 'Active' ? 'Paused' : 'Active'),
+                            className: 'csd-ll-status-btn ' + (l.status === 'Active' ? 'active' : l.status === 'Paused' ? 'paused' : 'never-run'),
+                            onClick: () => updateManualList(l.id, 'status', l.status === 'Active' ? 'Paused' : l.status === 'Paused' ? 'Never run' : 'Active'),
                             title: 'Click to toggle status',
                           },
                             React.createElement('span', { className: 'dot' }),
@@ -951,6 +954,8 @@ function App() {
                               })
                             : l.status === 'Active'
                             ? React.createElement('span', { className: 'csd-ll-currently-active' }, 'Currently active')
+                            : l.status === 'Never run'
+                            ? React.createElement('span', { style: { color: 'var(--d-fg-mute)', fontSize: 12 } }, '—')
                             : React.createElement('span', { className: 'csd-ll-editable', title: 'Click to edit', onClick: () => startEdit('lastActive', l.lastActive || todayStr) },
                                 l.lastActive
                                   ? new Date(l.lastActive + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -1058,7 +1063,11 @@ function App() {
               React.createElement('button', {
                 className: addListForm.status === 'Paused' ? 'active' : '',
                 onClick: () => setAddListForm(f => ({ ...f, status: 'Paused' })),
-              }, 'Paused'))),
+              }, 'Paused'),
+              React.createElement('button', {
+                className: addListForm.status === 'Never run' ? 'active' : '',
+                onClick: () => setAddListForm(f => ({ ...f, status: 'Never run' })),
+              }, 'Never run'))),
           React.createElement('div', { className: 'csd-modal-row' },
             React.createElement('div', { className: 'csd-modal-field' },
               React.createElement('label', null, 'Last active'),
