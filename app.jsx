@@ -1,5 +1,5 @@
 /* global React, ReactDOM */
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 const fmtA = window.CSD.format;
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -144,6 +144,21 @@ function App() {
   const [addListModal, setAddListModal] = useState(null); // { categoryId } | null
   const [addListForm, setAddListForm] = useState({ name: '', status: 'Active', lastActive: '', leadCount: '', runningText: '', csvData: null, csvName: '' });
 
+  // Inbox Analytics
+  const [analyticsApiKey, setAnalyticsApiKey] = useState(() => {
+    try { return localStorage.getItem('csd:api-key:v1') || ''; } catch (e) { return ''; }
+  });
+  const [analyticsKeyInput, setAnalyticsKeyInput] = useState('');
+  const [analyticsTimeframe, setAnalyticsTimeframe] = useState('30d');
+  const [inboxSearch, setInboxSearch] = useState('');
+  const [inboxRawData, setInboxRawData] = useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsError, setAnalyticsError] = useState(null);
+  const [analyticsSortCol, setAnalyticsSortCol] = useState('sent');
+  const [analyticsSortDir, setAnalyticsSortDir] = useState('desc');
+  const [analyticsGroupDomain, setAnalyticsGroupDomain] = useState(false);
+  const analyticsAutoLoaded = useRef(false);
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', tweaks.theme);
   }, [tweaks.theme]);
@@ -162,6 +177,45 @@ function App() {
     const id = setInterval(refresh, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [refresh]);
+
+  const loadInboxAnalytics = useCallback(async () => {
+    if (!analyticsApiKey) return;
+    setAnalyticsLoading(true);
+    setAnalyticsError(null);
+    try {
+      const today = new Date();
+      const start = new Date(today);
+      start.setMonth(today.getMonth() - 3);
+      const startStr = start.toISOString().split('T')[0];
+      const endStr = today.toISOString().split('T')[0];
+      const res = await fetch(
+        `https://api.instantly.ai/api/v2/accounts/analytics/daily?start_date=${startStr}&end_date=${endStr}`,
+        { headers: { Authorization: 'Bearer ' + analyticsApiKey } }
+      );
+      if (res.status === 401) throw new Error('Invalid API key. Please check the key below.');
+      if (res.status === 413) throw new Error('Too many inboxes for 3 months. Use the search to narrow by a specific inbox.');
+      if (!res.ok) throw new Error('Instantly API error ' + res.status + '.');
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error('Unexpected response format from API.');
+      setInboxRawData(data);
+    } catch (err) {
+      const msg = err.message || '';
+      setAnalyticsError(
+        (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS'))
+          ? 'Connection failed — CORS may be blocking the request. Try opening the dashboard via a local server (python3 -m http.server 8080) rather than from file://.'
+          : msg
+      );
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [analyticsApiKey]);
+
+  useEffect(() => {
+    if (activeNav === 'analytics' && analyticsApiKey && !analyticsAutoLoaded.current) {
+      analyticsAutoLoaded.current = true;
+      loadInboxAnalytics();
+    }
+  }, [activeNav, analyticsApiKey, loadInboxAnalytics]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -255,6 +309,68 @@ function App() {
 
   const labels = useMemo(() => dayLabels(7), []);
 
+  const processedInboxRows = useMemo(() => {
+    if (!inboxRawData || !Array.isArray(inboxRawData)) return [];
+    const todayStr = new Date().toISOString().split('T')[0];
+    const cutoff = new Date();
+    if (analyticsTimeframe === '7d') cutoff.setDate(cutoff.getDate() - 7);
+    else if (analyticsTimeframe === '30d') cutoff.setDate(cutoff.getDate() - 30);
+    else if (analyticsTimeframe === '3mo') cutoff.setMonth(cutoff.getMonth() - 3);
+    const cutoffStr = cutoff.toISOString().split('T')[0];
+
+    const q = inboxSearch.toLowerCase().trim();
+    const agg = {};
+    for (const r of inboxRawData) {
+      const inRange = analyticsTimeframe === 'today' ? r.date === todayStr : r.date >= cutoffStr && r.date <= todayStr;
+      if (!inRange) continue;
+      if (q && !r.email_account.toLowerCase().includes(q)) continue;
+      const email = r.email_account;
+      if (!agg[email]) agg[email] = { email, domain: email.split('@')[1] || email, sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 };
+      const a = agg[email];
+      a.sent += r.sent || 0;
+      a.bounced += r.bounced || 0;
+      a.autoReplies += r.unique_replies_automatic || 0;
+      a.uniqueReplies += r.unique_replies || 0;
+    }
+    const rows = Object.values(agg).map(a => ({
+      ...a,
+      realReplies: Math.max(0, a.uniqueReplies - a.autoReplies),
+      bounceRate: a.sent > 0 ? a.bounced / a.sent : 0,
+    }));
+
+    const dir = analyticsSortDir === 'asc' ? 1 : -1;
+    const cmp = (a, b) => {
+      if (analyticsSortCol === 'email') return dir * a.email.localeCompare(b.email);
+      if (analyticsSortCol === 'bounceRate') return dir * (a.bounceRate - b.bounceRate);
+      if (analyticsSortCol === 'realReplies') return dir * (a.realReplies - b.realReplies);
+      if (analyticsSortCol === 'autoReplies') return dir * (a.autoReplies - b.autoReplies);
+      if (analyticsSortCol === 'replies') return dir * (a.uniqueReplies - b.uniqueReplies);
+      return dir * (a.sent - b.sent);
+    };
+    if (analyticsGroupDomain) {
+      rows.sort((a, b) => a.domain.localeCompare(b.domain) || cmp(a, b));
+    } else {
+      rows.sort(cmp);
+    }
+    return rows;
+  }, [inboxRawData, analyticsTimeframe, inboxSearch, analyticsSortCol, analyticsSortDir, analyticsGroupDomain]);
+
+  const analyticsTotals = useMemo(() => {
+    const t = processedInboxRows.reduce((acc, r) => ({
+      sent: acc.sent + r.sent,
+      bounced: acc.bounced + r.bounced,
+      replies: acc.replies + r.uniqueReplies,
+      realReplies: acc.realReplies + r.realReplies,
+      autoReplies: acc.autoReplies + r.autoReplies,
+    }), { sent: 0, bounced: 0, replies: 0, realReplies: 0, autoReplies: 0 });
+    return {
+      ...t,
+      inboxes: processedInboxRows.length,
+      replyRate: t.sent > 0 ? t.replies / t.sent : 0,
+      bounceRate: t.sent > 0 ? t.bounced / t.sent : 0,
+    };
+  }, [processedInboxRows]);
+
   const onResolve = (id) => {
     const next = { ...resolved, [id]: Date.now() };
     setResolved(next); saveResolved(next);
@@ -338,7 +454,12 @@ function App() {
       navItem('reports', 'Reports',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('path', { d: 'M21.21 15.89A10 10 0 1 1 8 2.83' }),
-          React.createElement('path', { d: 'M22 12A10 10 0 0 0 12 2v10z' })))),
+          React.createElement('path', { d: 'M22 12A10 10 0 0 0 12 2v10z' }))),
+      navItem('analytics', 'Inbox Analytics',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('line', { x1: 18, y1: 20, x2: 18, y2: 10 }),
+          React.createElement('line', { x1: 12, y1: 20, x2: 12, y2: 4 }),
+          React.createElement('line', { x1: 6, y1: 20, x2: 6, y2: 14 })))),
     React.createElement('div', { className: 'csd-sidebar-section' }, 'Account'),
     React.createElement('nav', { className: 'csd-nav' },
       navItem('settings', 'Settings',
@@ -348,7 +469,7 @@ function App() {
   );
 
   // ---------- Topbar ----------
-  const titleByNav = { overview: 'Overview', campaigns: 'Campaigns', clients: 'Clients', leadlists: 'Lead Lists', bookings: 'Bookings', reports: 'Reports', settings: 'Settings' };
+  const titleByNav = { overview: 'Overview', campaigns: 'Campaigns', clients: 'Clients', leadlists: 'Lead Lists', bookings: 'Bookings', reports: 'Reports', analytics: 'Inbox Analytics', settings: 'Settings' };
   const topbar = React.createElement('div', { className: 'csd-topbar' },
     React.createElement('div', { className: 'csd-topbar-title' },
       React.createElement('h1', null, titleByNav[activeNav] || 'Dashboard'),
@@ -1006,12 +1127,225 @@ function App() {
                     }))));
         }));
 
+  // ---------- Inbox Analytics view ----------
+  const toggleAnalyticsSort = (col) => {
+    if (analyticsSortCol === col) setAnalyticsSortDir(d => d === 'desc' ? 'asc' : 'desc');
+    else { setAnalyticsSortCol(col); setAnalyticsSortDir('desc'); }
+  };
+
+  const sortIcon = (col) => {
+    if (analyticsSortCol !== col) return React.createElement('span', { className: 'ia-sort-icon ia-sort-none' }, '↕');
+    return React.createElement('span', { className: 'ia-sort-icon' }, analyticsSortDir === 'desc' ? '↓' : '↑');
+  };
+
+  const pct = (v) => (v * 100).toFixed(2) + '%';
+  const num = (v) => v.toLocaleString();
+
+  const tfLabels = { today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '3mo': 'Last 3 months' };
+
+  const inboxAnalyticsView = !analyticsApiKey
+    ? React.createElement('div', { className: 'ia-setup' },
+        React.createElement('div', { className: 'ia-setup-icon' },
+          React.createElement('svg', { width: 28, height: 28, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' },
+            React.createElement('line', { x1: 18, y1: 20, x2: 18, y2: 10 }),
+            React.createElement('line', { x1: 12, y1: 20, x2: 12, y2: 4 }),
+            React.createElement('line', { x1: 6, y1: 20, x2: 6, y2: 14 }))),
+        React.createElement('h3', { className: 'ia-setup-title' }, 'Connect your Instantly account'),
+        React.createElement('p', { className: 'ia-setup-desc' },
+          'Enter your Instantly API key to load per-inbox analytics. Find it at ',
+          React.createElement('strong', null, 'app.instantly.ai → Settings → API Keys'),
+          '. It is stored only in your browser.'),
+        React.createElement('div', { className: 'ia-setup-form' },
+          React.createElement('input', {
+            className: 'ia-key-input',
+            type: 'password',
+            placeholder: 'Paste API key…',
+            value: analyticsKeyInput,
+            onChange: e => setAnalyticsKeyInput(e.target.value),
+            onKeyDown: e => {
+              if (e.key === 'Enter' && analyticsKeyInput.trim()) {
+                const k = analyticsKeyInput.trim();
+                localStorage.setItem('csd:api-key:v1', k);
+                setAnalyticsApiKey(k);
+                setAnalyticsKeyInput('');
+                analyticsAutoLoaded.current = false;
+              }
+            },
+          }),
+          React.createElement('button', {
+            className: 'csd-btn-primary',
+            disabled: !analyticsKeyInput.trim(),
+            onClick: () => {
+              const k = analyticsKeyInput.trim();
+              if (!k) return;
+              localStorage.setItem('csd:api-key:v1', k);
+              setAnalyticsApiKey(k);
+              setAnalyticsKeyInput('');
+              analyticsAutoLoaded.current = false;
+            },
+          }, 'Connect')))
+    : React.createElement(React.Fragment, null,
+        // Toolbar row
+        React.createElement('div', { className: 'ia-toolbar' },
+          React.createElement('div', { className: 'csd-segment' },
+            ['today', '7d', '30d', '3mo'].map(tf =>
+              React.createElement('button', {
+                key: tf,
+                className: analyticsTimeframe === tf ? 'active' : '',
+                onClick: () => setAnalyticsTimeframe(tf),
+              }, tfLabels[tf]))),
+          React.createElement('div', { className: 'ia-search-wrap' },
+            React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' },
+              React.createElement('circle', { cx: 11, cy: 11, r: 7 }),
+              React.createElement('path', { d: 'm20 20-3.5-3.5' })),
+            React.createElement('input', {
+              className: 'ia-search',
+              type: 'text',
+              placeholder: 'Filter by inbox address…',
+              value: inboxSearch,
+              onChange: e => setInboxSearch(e.target.value),
+            }),
+            inboxSearch && React.createElement('button', {
+              className: 'ia-search-clear',
+              onClick: () => setInboxSearch(''),
+              title: 'Clear',
+            }, '×')),
+          React.createElement('button', {
+            className: 'csd-ghost-btn' + (analyticsGroupDomain ? ' is-on' : ''),
+            onClick: () => setAnalyticsGroupDomain(v => !v),
+            title: 'Group rows by sending domain',
+          },
+            React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+              React.createElement('rect', { x: 3, y: 3, width: 7, height: 9 }),
+              React.createElement('rect', { x: 14, y: 3, width: 7, height: 5 }),
+              React.createElement('rect', { x: 14, y: 12, width: 7, height: 9 }),
+              React.createElement('rect', { x: 3, y: 16, width: 7, height: 5 })),
+            'Group by domain'),
+          React.createElement('button', {
+            className: 'csd-ghost-btn' + (analyticsLoading ? ' ia-spinning' : ''),
+            onClick: loadInboxAnalytics,
+            disabled: analyticsLoading,
+            title: 'Refresh inbox analytics',
+          },
+            React.createElement('svg', {
+              width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round',
+              style: analyticsLoading ? { animation: 'csd-spin 0.8s linear infinite' } : null,
+            },
+              React.createElement('path', { d: 'M3 12a9 9 0 0 1 15-6.7L21 8' }),
+              React.createElement('path', { d: 'M21 3v5h-5' }),
+              React.createElement('path', { d: 'M21 12a9 9 0 0 1-15 6.7L3 16' }),
+              React.createElement('path', { d: 'M3 21v-5h5' })),
+            analyticsLoading ? 'Loading…' : 'Refresh'),
+          React.createElement('button', {
+            className: 'csd-ghost-btn',
+            title: 'Remove saved API key',
+            onClick: () => {
+              localStorage.removeItem('csd:api-key:v1');
+              setAnalyticsApiKey('');
+              setInboxRawData(null);
+              setAnalyticsError(null);
+              analyticsAutoLoaded.current = false;
+            },
+          },
+            React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+              React.createElement('rect', { x: 3, y: 11, width: 18, height: 11, rx: 2, ry: 2 }),
+              React.createElement('path', { d: 'M7 11V7a5 5 0 0 1 10 0v4' })),
+            'Reset key')),
+
+        // Error state
+        analyticsError && React.createElement('div', { className: 'ia-error' },
+          React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+            React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+            React.createElement('line', { x1: 12, y1: 8, x2: 12, y2: 12 }),
+            React.createElement('line', { x1: 12, y1: 16, x2: 12.01, y2: 16 })),
+          analyticsError),
+
+        // Loading skeleton
+        analyticsLoading && !inboxRawData && React.createElement('div', { className: 'ia-skeleton' },
+          [1,2,3,4,5].map(i => React.createElement('div', { key: i, className: 'ia-skel-row', style: { opacity: 1 - i * 0.15 } }))),
+
+        // Summary stats
+        !analyticsLoading && inboxRawData && React.createElement('div', { className: 'ia-summary' },
+          React.createElement('div', { className: 'ia-stat' },
+            React.createElement('span', { className: 'ia-stat-val' }, num(analyticsTotals.inboxes)),
+            React.createElement('span', { className: 'ia-stat-lbl' }, 'Inboxes')),
+          React.createElement('div', { className: 'ia-stat-div' }),
+          React.createElement('div', { className: 'ia-stat' },
+            React.createElement('span', { className: 'ia-stat-val' }, num(analyticsTotals.sent)),
+            React.createElement('span', { className: 'ia-stat-lbl' }, tfLabels[analyticsTimeframe] + ' · Sent')),
+          React.createElement('div', { className: 'ia-stat-div' }),
+          React.createElement('div', { className: 'ia-stat' },
+            React.createElement('span', { className: 'ia-stat-val' }, num(analyticsTotals.replies)),
+            React.createElement('span', { className: 'ia-stat-lbl' }, 'Total replies')),
+          React.createElement('div', { className: 'ia-stat-div' }),
+          React.createElement('div', { className: 'ia-stat' },
+            React.createElement('span', { className: 'ia-stat-val ia-pct' }, pct(analyticsTotals.replyRate)),
+            React.createElement('span', { className: 'ia-stat-lbl' }, 'Reply rate')),
+          React.createElement('div', { className: 'ia-stat-div' }),
+          React.createElement('div', { className: 'ia-stat' },
+            React.createElement('span', {
+              className: 'ia-stat-val ia-pct' + (analyticsTotals.bounceRate > 0.05 ? ' ia-bad' : analyticsTotals.bounceRate > 0.02 ? ' ia-warn' : ''),
+            }, pct(analyticsTotals.bounceRate)),
+            React.createElement('span', { className: 'ia-stat-lbl' }, 'Bounce rate'))),
+
+        // Table
+        !analyticsLoading && inboxRawData && React.createElement('div', { className: 'ia-table-wrap' },
+          React.createElement('table', { className: 'ia-table' },
+            React.createElement('thead', null,
+              React.createElement('tr', null,
+                React.createElement('th', { className: 'ia-th ia-th-inbox', onClick: () => toggleAnalyticsSort('email') },
+                  'Inbox ', sortIcon('email')),
+                React.createElement('th', { className: 'ia-th ia-th-num', onClick: () => toggleAnalyticsSort('sent') },
+                  'Sent ', sortIcon('sent')),
+                React.createElement('th', { className: 'ia-th ia-th-num', onClick: () => toggleAnalyticsSort('replies') },
+                  'Replies ', sortIcon('replies')),
+                React.createElement('th', { className: 'ia-th ia-th-num', onClick: () => toggleAnalyticsSort('realReplies') },
+                  'Real ', sortIcon('realReplies')),
+                React.createElement('th', { className: 'ia-th ia-th-num', onClick: () => toggleAnalyticsSort('autoReplies') },
+                  'Auto ', sortIcon('autoReplies')),
+                React.createElement('th', { className: 'ia-th ia-th-num', onClick: () => toggleAnalyticsSort('bounceRate') },
+                  'Bounce rate ', sortIcon('bounceRate')))),
+            React.createElement('tbody', null,
+              processedInboxRows.length === 0
+                ? React.createElement('tr', null,
+                    React.createElement('td', { colSpan: 6, className: 'ia-empty' },
+                      inboxSearch ? 'No inboxes match "' + inboxSearch + '".' : 'No data for this timeframe.'))
+                : (() => {
+                    const out = [];
+                    let lastDomain = null;
+                    for (const r of processedInboxRows) {
+                      if (analyticsGroupDomain && r.domain !== lastDomain) {
+                        lastDomain = r.domain;
+                        out.push(React.createElement('tr', { key: 'domain-' + r.domain, className: 'ia-domain-row' },
+                          React.createElement('td', { colSpan: 6 },
+                            React.createElement('span', { className: 'ia-domain-label' }, '@' + r.domain))));
+                      }
+                      const br = r.bounceRate;
+                      const brClass = br > 0.05 ? 'ia-bad' : br > 0.02 ? 'ia-warn' : '';
+                      out.push(React.createElement('tr', { key: r.email, className: 'ia-row' },
+                        React.createElement('td', { className: 'ia-td ia-td-inbox' },
+                          React.createElement('span', { className: 'ia-inbox-local' }, r.email.split('@')[0]),
+                          React.createElement('span', { className: 'ia-inbox-at' }, '@'),
+                          React.createElement('span', { className: 'ia-inbox-domain' }, r.domain)),
+                        React.createElement('td', { className: 'ia-td ia-td-num' }, num(r.sent)),
+                        React.createElement('td', { className: 'ia-td ia-td-num ia-replies-total' }, num(r.uniqueReplies)),
+                        React.createElement('td', { className: 'ia-td ia-td-num ia-replies-real' }, num(r.realReplies)),
+                        React.createElement('td', { className: 'ia-td ia-td-num ia-replies-auto' }, num(r.autoReplies)),
+                        React.createElement('td', { className: 'ia-td ia-td-num ' + brClass }, pct(br))));
+                    }
+                    return out;
+                  })())),
+          processedInboxRows.length > 0 && React.createElement('div', { className: 'ia-table-footer' },
+            num(processedInboxRows.length), ' inbox', processedInboxRows.length !== 1 ? 'es' : '', ' · ',
+            tfLabels[analyticsTimeframe])));
+
   let viewBody;
   if (activeNav === 'clients') viewBody = clientsView;
   else if (activeNav === 'overview') viewBody = React.createElement(React.Fragment, null, statsRow, banner, emptyPage('Overview coming soon', 'Aggregate trends across the whole portfolio. For now, the Campaigns tab is your command center.'));
   else if (activeNav === 'leadlists') viewBody = leadListsView;
   else if (activeNav === 'bookings') viewBody = emptyPage('Bookings', 'Once Calendly is wired in, this view will show every call booked across all campaigns with attribution back to the source sequence.');
   else if (activeNav === 'reports') viewBody = emptyPage('Reports', 'Weekly and monthly snapshots, exportable as CSV or PDF.');
+  else if (activeNav === 'analytics') viewBody = inboxAnalyticsView;
   else if (activeNav === 'settings') viewBody = emptyPage('Settings', 'Thresholds, integrations, team access. Use the Tweaks toggle for the live design knobs.');
   else viewBody = campaignsBody;
 
