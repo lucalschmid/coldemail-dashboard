@@ -156,7 +156,7 @@ function App() {
   const [analyticsError, setAnalyticsError] = useState(null);
   const [analyticsSortCol, setAnalyticsSortCol] = useState('sent');
   const [analyticsSortDir, setAnalyticsSortDir] = useState('desc');
-  const [analyticsGroupDomain, setAnalyticsGroupDomain] = useState(false);
+  const [analyticsGroupBy, setAnalyticsGroupBy] = useState('none'); // 'none' | 'tag' | 'client'
   const analyticsAutoLoaded = useRef(false);
 
   useEffect(() => {
@@ -320,12 +320,15 @@ function App() {
       .filter(inbox => !q || (inbox.e || '').toLowerCase().includes(q))
       .map(inbox => {
         const email = inbox.e || '';
+        const tag   = inbox.g || '';
+        const client = tag ? tag.split(' ')[0] : 'Untagged';
         const m = inbox[tfk] || {};
         const sent = m.s || 0, bounced = m.b || 0;
         const uniqueReplies = m.r || 0, autoReplies = m.a || 0;
         return {
           email,
           domain: email.split('@')[1] || email,
+          tag, client,
           sent, bounced, uniqueReplies, autoReplies,
           realReplies: Math.max(0, uniqueReplies - autoReplies),
           bounceRate: sent > 0 ? bounced / sent : 0,
@@ -341,10 +344,11 @@ function App() {
       if (analyticsSortCol === 'replies') return dir * (a.uniqueReplies - b.uniqueReplies);
       return dir * (a.sent - b.sent);
     };
-    if (analyticsGroupDomain) rows.sort((a, b) => a.domain.localeCompare(b.domain) || cmp(a, b));
+    if (analyticsGroupBy === 'tag')    rows.sort((a, b) => a.tag.localeCompare(b.tag) || cmp(a, b));
+    else if (analyticsGroupBy === 'client') rows.sort((a, b) => a.client.localeCompare(b.client) || cmp(a, b));
     else rows.sort(cmp);
     return rows;
-  }, [inboxRawData, analyticsTimeframe, inboxSearch, analyticsSortCol, analyticsSortDir, analyticsGroupDomain]);
+  }, [inboxRawData, analyticsTimeframe, inboxSearch, analyticsSortCol, analyticsSortDir, analyticsGroupBy]);
 
   const analyticsTotals = useMemo(() => {
     const t = processedInboxRows.reduce((acc, r) => ({
@@ -1203,17 +1207,12 @@ function App() {
               onClick: () => setInboxSearch(''),
               title: 'Clear',
             }, '×')),
-          React.createElement('button', {
-            className: 'csd-ghost-btn' + (analyticsGroupDomain ? ' is-on' : ''),
-            onClick: () => setAnalyticsGroupDomain(v => !v),
-            title: 'Group rows by sending domain',
-          },
-            React.createElement('svg', { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
-              React.createElement('rect', { x: 3, y: 3, width: 7, height: 9 }),
-              React.createElement('rect', { x: 14, y: 3, width: 7, height: 5 }),
-              React.createElement('rect', { x: 14, y: 12, width: 7, height: 9 }),
-              React.createElement('rect', { x: 3, y: 16, width: 7, height: 5 })),
-            'Group by domain'),
+          React.createElement('div', { className: 'ia-groupby-wrap' },
+            React.createElement('span', { className: 'ia-groupby-label' }, 'Group'),
+            React.createElement('div', { className: 'csd-segment' },
+              React.createElement('button', { className: analyticsGroupBy === 'none' ? 'active' : '', onClick: () => setAnalyticsGroupBy('none') }, 'None'),
+              React.createElement('button', { className: analyticsGroupBy === 'client' ? 'active' : '', onClick: () => setAnalyticsGroupBy('client') }, 'Client'),
+              React.createElement('button', { className: analyticsGroupBy === 'tag' ? 'active' : '', onClick: () => setAnalyticsGroupBy('tag') }, 'Tag'))),
           React.createElement('button', {
             className: 'csd-ghost-btn' + (analyticsLoading ? ' ia-spinning' : ''),
             onClick: loadInboxAnalytics,
@@ -1305,13 +1304,14 @@ function App() {
                       inboxSearch ? 'No inboxes match "' + inboxSearch + '".' : 'No data for this timeframe.'))
                 : (() => {
                     const out = [];
-                    let lastDomain = null;
+                    let lastGroup = null;
                     for (const r of processedInboxRows) {
-                      if (analyticsGroupDomain && r.domain !== lastDomain) {
-                        lastDomain = r.domain;
-                        out.push(React.createElement('tr', { key: 'domain-' + r.domain, className: 'ia-domain-row' },
+                      const groupKey = analyticsGroupBy === 'tag' ? r.tag : analyticsGroupBy === 'client' ? r.client : null;
+                      if (groupKey && groupKey !== lastGroup) {
+                        lastGroup = groupKey;
+                        out.push(React.createElement('tr', { key: 'group-' + groupKey, className: 'ia-domain-row' },
                           React.createElement('td', { colSpan: 6 },
-                            React.createElement('span', { className: 'ia-domain-label' }, '@' + r.domain))));
+                            React.createElement('span', { className: 'ia-domain-label' }, groupKey))));
                       }
                       const br = r.bounceRate;
                       const brClass = br > 0.05 ? 'ia-bad' : br > 0.02 ? 'ia-warn' : '';

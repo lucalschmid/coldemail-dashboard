@@ -1947,6 +1947,8 @@ html, body { margin: 0; padding: 0; }
   padding: 2px 0;
 }
 .ia-search-clear:hover { color: var(--d-fg); }
+.ia-groupby-wrap { display: flex; align-items: center; gap: 7px; }
+.ia-groupby-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--d-fg-mute); white-space: nowrap; }
 
 /* Error */
 .ia-error {
