@@ -431,6 +431,11 @@ function App() {
           React.createElement('path', { d: 'M4 9h16' }),
           React.createElement('path', { d: 'M9 9v11' })),
         derived.length),
+      navItem('analytics', 'Inbox Analytics',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('line', { x1: 18, y1: 20, x2: 18, y2: 10 }),
+          React.createElement('line', { x1: 12, y1: 20, x2: 12, y2: 4 }),
+          React.createElement('line', { x1: 6, y1: 20, x2: 6, y2: 14 }))),
       navItem('clients', 'Clients',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }),
@@ -450,12 +455,7 @@ function App() {
       navItem('reports', 'Reports',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('path', { d: 'M21.21 15.89A10 10 0 1 1 8 2.83' }),
-          React.createElement('path', { d: 'M22 12A10 10 0 0 0 12 2v10z' }))),
-      navItem('analytics', 'Inbox Analytics',
-        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          React.createElement('line', { x1: 18, y1: 20, x2: 18, y2: 10 }),
-          React.createElement('line', { x1: 12, y1: 20, x2: 12, y2: 4 }),
-          React.createElement('line', { x1: 6, y1: 20, x2: 6, y2: 14 })))),
+          React.createElement('path', { d: 'M22 12A10 10 0 0 0 12 2v10z' })))),
     React.createElement('div', { className: 'csd-sidebar-section' }, 'Account'),
     React.createElement('nav', { className: 'csd-nav' },
       navItem('settings', 'Settings',
@@ -1124,6 +1124,20 @@ function App() {
         }));
 
   // ---------- Inbox Analytics view ----------
+  const exportAnalyticsCSV = () => {
+    const tfLabelsMap = { today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '3mo': 'Last 3 months' };
+    const esc = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const headers = ['Inbox', 'Tag', 'Client', 'Sent', 'Total Replies', 'Real Replies', 'Auto Replies', 'Bounce Rate'];
+    const rows = processedInboxRows.map(r => [
+      r.email, r.tag, r.client, r.sent,
+      r.uniqueReplies, r.realReplies, r.autoReplies,
+      (r.bounceRate * 100).toFixed(2) + '%',
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(esc).join(',')).join('\n');
+    const date = new Date().toISOString().split('T')[0];
+    downloadBlob(`inbox-analytics-${analyticsTimeframe}-${date}.csv`, csv);
+  };
+
   const toggleAnalyticsSort = (col) => {
     if (analyticsSortCol === col) setAnalyticsSortDir(d => d === 'desc' ? 'asc' : 'desc');
     else { setAnalyticsSortCol(col); setAnalyticsSortDir('desc'); }
@@ -1214,6 +1228,16 @@ function App() {
               React.createElement('button', { className: analyticsGroupBy === 'none' ? 'active' : '', onClick: () => setAnalyticsGroupBy('none') }, 'None'),
               React.createElement('button', { className: analyticsGroupBy === 'client' ? 'active' : '', onClick: () => setAnalyticsGroupBy('client') }, 'Client'),
               React.createElement('button', { className: analyticsGroupBy === 'tag' ? 'active' : '', onClick: () => setAnalyticsGroupBy('tag') }, 'Tag'))),
+          processedInboxRows.length > 0 && React.createElement('button', {
+            className: 'csd-ghost-btn',
+            onClick: exportAnalyticsCSV,
+            title: 'Export current view as CSV',
+          },
+            React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+              React.createElement('path', { d: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4' }),
+              React.createElement('polyline', { points: '7 10 12 15 17 10' }),
+              React.createElement('line', { x1: 12, y1: 15, x2: 12, y2: 3 })),
+            'Export CSV'),
           React.createElement('button', {
             className: 'csd-ghost-btn' + (analyticsLoading ? ' ia-spinning' : ''),
             onClick: loadInboxAnalytics,
@@ -1322,12 +1346,13 @@ function App() {
                           onClick: () => toggleGroup(groupKey),
                         },
                           React.createElement('td', { colSpan: 6 },
-                            React.createElement('svg', {
-                              className: 'ia-group-chev' + (isCollapsed ? ' ia-group-chev-collapsed' : ''),
-                              width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
-                            },
-                              React.createElement('polyline', { points: '6 9 12 15 18 9' })),
-                            React.createElement('span', { className: 'ia-domain-label' }, groupKey))));
+                            React.createElement('div', { className: 'ia-domain-inner' },
+                              React.createElement('svg', {
+                                className: 'ia-group-chev' + (isCollapsed ? ' ia-group-chev-collapsed' : ''),
+                                width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
+                              },
+                                React.createElement('polyline', { points: '6 9 12 15 18 9' })),
+                              React.createElement('span', { className: 'ia-domain-label' }, groupKey)))));
                       }
                       const br = r.bounceRate;
                       if (groupKey && collapsedGroups.has(groupKey)) continue;

@@ -2062,13 +2062,17 @@ html, body { margin: 0; padding: 0; }
 /* Domain group header rows */
 .ia-domain-row { background: var(--d-bg-soft); }
 .ia-domain-row td {
-  padding: 6px 14px;
+  padding: 0;
   border-bottom: 1px solid var(--d-rule);
   border-top: 1px solid var(--d-rule);
+}
+.ia-domain-inner {
   display: flex; align-items: center; gap: 7px;
+  padding: 6px 14px;
+  width: 100%;
 }
 .ia-domain-row-toggle { cursor: pointer; user-select: none; }
-.ia-domain-row-toggle:hover td { background: var(--d-row-hover-strong); }
+.ia-domain-row-toggle:hover .ia-domain-inner { background: var(--d-row-hover-strong); }
 .ia-domain-label {
   font-size: 11px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.07em;
