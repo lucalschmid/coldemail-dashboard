@@ -308,20 +308,24 @@ function App() {
 
   const labels = useMemo(() => dayLabels(7), []);
 
+  // Short-key map matches GAS compact format (keeps cache under 500KB limit)
+  const TF_KEY = { today: 't', '7d': '7', '30d': '30', '3mo': '90' };
+
   const processedInboxRows = useMemo(() => {
     if (!inboxRawData || !inboxRawData.inboxes) return [];
-    const tf = analyticsTimeframe;
-    const q  = inboxSearch.toLowerCase().trim();
+    const tfk = TF_KEY[analyticsTimeframe];
+    const q   = inboxSearch.toLowerCase().trim();
 
     const rows = inboxRawData.inboxes
-      .filter(inbox => !q || inbox.email.toLowerCase().includes(q))
+      .filter(inbox => !q || (inbox.e || '').toLowerCase().includes(q))
       .map(inbox => {
-        const m = inbox[tf] || {};
-        const sent = m.sent || 0, bounced = m.bounced || 0;
-        const uniqueReplies = m.uniqueReplies || 0, autoReplies = m.autoReplies || 0;
+        const email = inbox.e || '';
+        const m = inbox[tfk] || {};
+        const sent = m.s || 0, bounced = m.b || 0;
+        const uniqueReplies = m.r || 0, autoReplies = m.a || 0;
         return {
-          email: inbox.email,
-          domain: inbox.email.split('@')[1] || inbox.email,
+          email,
+          domain: email.split('@')[1] || email,
           sent, bounced, uniqueReplies, autoReplies,
           realReplies: Math.max(0, uniqueReplies - autoReplies),
           bounceRate: sent > 0 ? bounced / sent : 0,

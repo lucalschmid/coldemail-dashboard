@@ -140,13 +140,15 @@ function refreshAnalyticsCache() {
   if (!accountsJson) throw new Error('Accounts list not set — run setAccountsList() first.');
   var seedEmails = JSON.parse(accountsJson);
   Logger.log('Accounts in allowlist: ' + seedEmails.length);
+  // Short keys to stay under the 500KB per-property limit
+  // e=email, t=today, 7=7d, 30=30d, 90=3mo, s=sent, b=bounced, r=uniqueReplies, a=autoReplies
   seedEmails.forEach(function(email) {
     inboxMap[email] = {
-      email: email,
-      today: { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
-      '7d':  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
-      '30d': { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
-      '3mo': { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+      e: email,
+      t:    { s: 0, b: 0, r: 0, a: 0 },
+      '7':  { s: 0, b: 0, r: 0, a: 0 },
+      '30': { s: 0, b: 0, r: 0, a: 0 },
+      '90': { s: 0, b: 0, r: 0, a: 0 },
     };
   });
 
@@ -175,10 +177,10 @@ function refreshAnalyticsCache() {
       var d  = row.date;
       var s  = num(row.sent),            bo = num(row.bounced);
       var ur = num(row.unique_replies),   ar = num(row.unique_replies_automatic);
-      if (d >= cutoffs['3mo'])  { r['3mo'].sent += s; r['3mo'].bounced += bo; r['3mo'].uniqueReplies += ur; r['3mo'].autoReplies += ar; }
-      if (d >= cutoffs['30d'])  { r['30d'].sent += s; r['30d'].bounced += bo; r['30d'].uniqueReplies += ur; r['30d'].autoReplies += ar; }
-      if (d >= cutoffs['7d'])   { r['7d'].sent  += s; r['7d'].bounced  += bo; r['7d'].uniqueReplies  += ur; r['7d'].autoReplies  += ar; }
-      if (d === todayStr)       { r.today.sent  += s; r.today.bounced  += bo; r.today.uniqueReplies  += ur; r.today.autoReplies  += ar; }
+      if (d >= cutoffs['3mo'])  { r['90'].s += s; r['90'].b += bo; r['90'].r += ur; r['90'].a += ar; }
+      if (d >= cutoffs['30d'])  { r['30'].s += s; r['30'].b += bo; r['30'].r += ur; r['30'].a += ar; }
+      if (d >= cutoffs['7d'])   { r['7'].s  += s; r['7'].b  += bo; r['7'].r  += ur; r['7'].a  += ar; }
+      if (d === todayStr)       { r.t.s     += s; r.t.b     += bo; r.t.r     += ur; r.t.a     += ar; }
     });
 
     // Move window back
@@ -191,7 +193,7 @@ function refreshAnalyticsCache() {
     inboxes: Object.values(inboxMap),
   });
   PropertiesService.getScriptProperties().setProperty(ANALYTICS_CACHE_KEY, payload);
-  Logger.log('Analytics cache saved. Inboxes: ' + Object.keys(inboxMap).length + ' (accounts: ' + allEmails.length + ') | Size: ' + payload.length + ' bytes');
+  Logger.log('Analytics cache saved. Inboxes: ' + Object.keys(inboxMap).length + ' | Size: ' + payload.length + ' bytes');
 }
 
 // ── Parse JSON array response safely ─────────────────────────
