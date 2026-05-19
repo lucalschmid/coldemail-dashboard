@@ -157,6 +157,7 @@ function App() {
   const [analyticsSortCol, setAnalyticsSortCol] = useState('sent');
   const [analyticsSortDir, setAnalyticsSortDir] = useState('desc');
   const [analyticsGroupBy, setAnalyticsGroupBy] = useState('none'); // 'none' | 'tag' | 'client'
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const analyticsAutoLoaded = useRef(false);
 
   useEffect(() => {
@@ -1309,11 +1310,27 @@ function App() {
                       const groupKey = analyticsGroupBy === 'tag' ? r.tag : analyticsGroupBy === 'client' ? r.client : null;
                       if (groupKey && groupKey !== lastGroup) {
                         lastGroup = groupKey;
-                        out.push(React.createElement('tr', { key: 'group-' + groupKey, className: 'ia-domain-row' },
+                        const isCollapsed = collapsedGroups.has(groupKey);
+                        const toggleGroup = (gk) => setCollapsedGroups(prev => {
+                          const next = new Set(prev);
+                          next.has(gk) ? next.delete(gk) : next.add(gk);
+                          return next;
+                        });
+                        out.push(React.createElement('tr', {
+                          key: 'group-' + groupKey,
+                          className: 'ia-domain-row ia-domain-row-toggle',
+                          onClick: () => toggleGroup(groupKey),
+                        },
                           React.createElement('td', { colSpan: 6 },
+                            React.createElement('svg', {
+                              className: 'ia-group-chev' + (isCollapsed ? ' ia-group-chev-collapsed' : ''),
+                              width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
+                            },
+                              React.createElement('polyline', { points: '6 9 12 15 18 9' })),
                             React.createElement('span', { className: 'ia-domain-label' }, groupKey))));
                       }
                       const br = r.bounceRate;
+                      if (groupKey && collapsedGroups.has(groupKey)) continue;
                       const brClass = br > 0.05 ? 'ia-bad' : br > 0.02 ? 'ia-warn' : '';
                       out.push(React.createElement('tr', { key: r.email, className: 'ia-row' },
                         React.createElement('td', { className: 'ia-td ia-td-inbox' },
