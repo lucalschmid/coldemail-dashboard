@@ -116,9 +116,9 @@ function handleInboxAnalytics(e, cb) {
 }
 
 // ── Analytics cache builder ───────────────────────────────────
-// Fetches all inboxes (paginated), pulls 3 months of daily data in
-// batches of 50 to stay under per-request row limits, then
-// pre-aggregates into four timeframe buckets per inbox.
+// Fetches 3 months of data in 2-week date chunks — no emails[]
+// filter, so no URL length issues and no accounts-list call needed.
+// Each chunk is ~1800 inboxes × 14 days, well under API row limits.
 function refreshAnalyticsCache() {
   var opts     = fetchOpts();
   var today    = new Date();
@@ -131,41 +131,50 @@ function refreshAnalyticsCache() {
     '3mo':   fmtDate(daysAgo(today, 89)),
   };
 
-  var allEmails = fetchAllAccountEmails(opts);
-  Logger.log('Analytics cache: found ' + allEmails.length + ' accounts');
-
   var inboxMap = {};
-  allEmails.forEach(function(email) {
-    inboxMap[email] = {
-      email:  email,
-      today:  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
-      '7d':   { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
-      '30d':  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
-      '3mo':  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
-    };
-  });
 
-  var BATCH = 50;
-  for (var i = 0; i < allEmails.length; i += BATCH) {
-    var batch = allEmails.slice(i, i + BATCH);
-    var url   = BASE_V2 + '/accounts/analytics/daily'
-      + '?start_date=' + cutoffs['3mo'] + '&end_date=' + todayStr;
-    batch.forEach(function(e) { url += '&emails[]=' + encodeURIComponent(e); });
+  // Walk backwards through 3 months in 14-day windows
+  var chunkEnd   = new Date(today);
+  var rangeStart = new Date(cutoffs['3mo'] + 'T12:00:00Z');
+
+  while (chunkEnd >= rangeStart) {
+    var chunkStart = new Date(chunkEnd);
+    chunkStart.setDate(chunkEnd.getDate() - 13); // 14-day window
+    if (chunkStart < rangeStart) chunkStart = rangeStart;
+
+    var url = BASE_V2 + '/accounts/analytics/daily'
+      + '?start_date=' + fmtDate(chunkStart)
+      + '&end_date='   + fmtDate(chunkEnd);
 
     var res  = UrlFetchApp.fetch(url, opts);
     var rows = safeJsonArray(res);
+    Logger.log('Chunk ' + fmtDate(chunkStart) + ' → ' + fmtDate(chunkEnd) + ': ' + rows.length + ' rows');
 
     rows.forEach(function(row) {
-      var r = inboxMap[row.email_account];
-      if (!r || !row.date) return;
+      var email = row.email_account;
+      if (!email || !row.date) return;
+      if (!inboxMap[email]) {
+        inboxMap[email] = {
+          email: email,
+          today: { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+          '7d':  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+          '30d': { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+          '3mo': { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+        };
+      }
+      var r  = inboxMap[email];
       var d  = row.date;
-      var s  = num(row.sent), bo = num(row.bounced);
-      var ur = num(row.unique_replies), ar = num(row.unique_replies_automatic);
-      if (d >= cutoffs['3mo'])   { r['3mo'].sent += s;  r['3mo'].bounced += bo;  r['3mo'].uniqueReplies += ur;  r['3mo'].autoReplies += ar;  }
-      if (d >= cutoffs['30d'])   { r['30d'].sent += s;  r['30d'].bounced += bo;  r['30d'].uniqueReplies += ur;  r['30d'].autoReplies += ar;  }
-      if (d >= cutoffs['7d'])    { r['7d'].sent  += s;  r['7d'].bounced  += bo;  r['7d'].uniqueReplies  += ur;  r['7d'].autoReplies  += ar;  }
-      if (d === todayStr)        { r.today.sent  += s;  r.today.bounced  += bo;  r.today.uniqueReplies  += ur;  r.today.autoReplies  += ar;  }
+      var s  = num(row.sent),            bo = num(row.bounced);
+      var ur = num(row.unique_replies),   ar = num(row.unique_replies_automatic);
+      if (d >= cutoffs['3mo'])  { r['3mo'].sent += s; r['3mo'].bounced += bo; r['3mo'].uniqueReplies += ur; r['3mo'].autoReplies += ar; }
+      if (d >= cutoffs['30d'])  { r['30d'].sent += s; r['30d'].bounced += bo; r['30d'].uniqueReplies += ur; r['30d'].autoReplies += ar; }
+      if (d >= cutoffs['7d'])   { r['7d'].sent  += s; r['7d'].bounced  += bo; r['7d'].uniqueReplies  += ur; r['7d'].autoReplies  += ar; }
+      if (d === todayStr)       { r.today.sent  += s; r.today.bounced  += bo; r.today.uniqueReplies  += ur; r.today.autoReplies  += ar; }
     });
+
+    // Move window back
+    chunkEnd = new Date(chunkStart);
+    chunkEnd.setDate(chunkStart.getDate() - 1);
   }
 
   var payload = JSON.stringify({
@@ -173,24 +182,7 @@ function refreshAnalyticsCache() {
     inboxes: Object.values(inboxMap),
   });
   PropertiesService.getScriptProperties().setProperty(ANALYTICS_CACHE_KEY, payload);
-  Logger.log('Analytics cache saved. Inboxes: ' + allEmails.length + ' | Size: ' + payload.length + ' bytes');
-}
-
-// ── Fetch all account email addresses (paginated) ─────────────
-function fetchAllAccountEmails(opts) {
-  var emails = [];
-  var startingAfter = null;
-  for (var page = 0; page < 20; page++) {
-    var url  = BASE_V2 + '/accounts?limit=100' + (startingAfter ? '&starting_after=' + startingAfter : '');
-    var res  = UrlFetchApp.fetch(url, opts);
-    if (res.getResponseCode() !== 200) break;
-    var json  = safeJson(res);
-    var items = json.items || json.data || (Array.isArray(json) ? json : []);
-    items.forEach(function(a) { if (a.email) emails.push(a.email); });
-    startingAfter = json.next_starting_after || null;
-    if (!startingAfter || items.length < 100) break;
-  }
-  return emails;
+  Logger.log('Analytics cache saved. Inboxes: ' + Object.keys(inboxMap).length + ' | Size: ' + payload.length + ' bytes');
 }
 
 // ── Parse JSON array response safely ─────────────────────────
