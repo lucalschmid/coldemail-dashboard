@@ -258,6 +258,10 @@ window.DASHBOARD_DATA = (function () {
     if (emailFilter) url += '&emails=' + encodeURIComponent(emailFilter);
     const result = await loadJSONP(url);
     if (result.error) throw new Error(result.error);
+    // Old GAS code (without handleInboxAnalytics) returns campaigns cache instead
+    if (!('data' in result) && ('campaigns' in result || 'generated_at' in result)) {
+      throw new Error('GAS is running an old version. In Apps Script → Deploy → Manage deployments → edit the deployment → set version to "New version" → save.');
+    }
     return result.data || [];
   }
 
