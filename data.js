@@ -247,5 +247,19 @@ window.DASHBOARD_DATA = (function () {
     }
   }
 
-  return { load, mock, APPS_SCRIPT_URL };
+  // Fetch inbox-level daily analytics via the GAS proxy (CORS-free from file://)
+  async function loadAnalytics(startDate, endDate, emailFilter) {
+    if (!APPS_SCRIPT_URL) throw new Error('APPS_SCRIPT_URL not set in data.js');
+    const sep = APPS_SCRIPT_URL.includes('?') ? '&' : '?';
+    let url = APPS_SCRIPT_URL + sep
+      + 'action=inbox_analytics'
+      + '&start_date=' + encodeURIComponent(startDate)
+      + '&end_date='   + encodeURIComponent(endDate);
+    if (emailFilter) url += '&emails=' + encodeURIComponent(emailFilter);
+    const result = await loadJSONP(url);
+    if (result.error) throw new Error(result.error);
+    return result.data || [];
+  }
+
+  return { load, loadAnalytics, mock, APPS_SCRIPT_URL };
 })();

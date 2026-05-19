@@ -179,7 +179,8 @@ function App() {
   }, [refresh]);
 
   const loadInboxAnalytics = useCallback(async () => {
-    if (!analyticsApiKey) return;
+    const hasGas = !!window.DASHBOARD_DATA?.APPS_SCRIPT_URL;
+    if (!hasGas && !analyticsApiKey) return;
     setAnalyticsLoading(true);
     setAnalyticsError(null);
     try {
@@ -187,22 +188,31 @@ function App() {
       const start = new Date(today);
       start.setMonth(today.getMonth() - 3);
       const startStr = start.toISOString().split('T')[0];
-      const endStr = today.toISOString().split('T')[0];
-      const res = await fetch(
-        `https://api.instantly.ai/api/v2/accounts/analytics/daily?start_date=${startStr}&end_date=${endStr}`,
-        { headers: { Authorization: 'Bearer ' + analyticsApiKey } }
-      );
-      if (res.status === 401) throw new Error('Invalid API key. Please check the key below.');
-      if (res.status === 413) throw new Error('Too many inboxes for 3 months. Use the search to narrow by a specific inbox.');
-      if (!res.ok) throw new Error('Instantly API error ' + res.status + '.');
-      const data = await res.json();
+      const endStr   = today.toISOString().split('T')[0];
+
+      let data;
+      if (hasGas) {
+        // Route through GAS proxy — CORS-free, works from file://
+        data = await window.DASHBOARD_DATA.loadAnalytics(startStr, endStr);
+      } else {
+        // Direct API fallback (requires dashboard served over http, not file://)
+        const res = await fetch(
+          'https://api.instantly.ai/api/v2/accounts/analytics/daily?start_date=' + startStr + '&end_date=' + endStr,
+          { headers: { Authorization: 'Bearer ' + analyticsApiKey } }
+        );
+        if (res.status === 401) throw new Error('Invalid API key. Please check the key below.');
+        if (res.status === 413) throw new Error('Too many inboxes for 3 months. Use the search to narrow by a specific inbox.');
+        if (!res.ok) throw new Error('Instantly API error ' + res.status + '.');
+        data = await res.json();
+      }
+
       if (!Array.isArray(data)) throw new Error('Unexpected response format from API.');
       setInboxRawData(data);
     } catch (err) {
       const msg = err.message || '';
       setAnalyticsError(
-        (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS'))
-          ? 'Connection failed — CORS may be blocking the request. Try opening the dashboard via a local server (python3 -m http.server 8080) rather than from file://.'
+        (msg.includes('Failed to fetch') || msg.includes('NetworkError'))
+          ? 'Connection failed. The dashboard must be served over http (not file://) for direct API calls. Configure APPS_SCRIPT_URL in data.js to avoid this.'
           : msg
       );
     } finally {
@@ -211,9 +221,12 @@ function App() {
   }, [analyticsApiKey]);
 
   useEffect(() => {
-    if (activeNav === 'analytics' && analyticsApiKey && !analyticsAutoLoaded.current) {
-      analyticsAutoLoaded.current = true;
-      loadInboxAnalytics();
+    if (activeNav === 'analytics' && !analyticsAutoLoaded.current) {
+      const hasSource = window.DASHBOARD_DATA?.APPS_SCRIPT_URL || analyticsApiKey;
+      if (hasSource) {
+        analyticsAutoLoaded.current = true;
+        loadInboxAnalytics();
+      }
     }
   }, [activeNav, analyticsApiKey, loadInboxAnalytics]);
 
@@ -1143,7 +1156,9 @@ function App() {
 
   const tfLabels = { today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', '3mo': 'Last 3 months' };
 
-  const inboxAnalyticsView = !analyticsApiKey
+  const hasAnalyticsSource = !!(window.DASHBOARD_DATA?.APPS_SCRIPT_URL || analyticsApiKey);
+
+  const inboxAnalyticsView = !hasAnalyticsSource
     ? React.createElement('div', { className: 'ia-setup' },
         React.createElement('div', { className: 'ia-setup-icon' },
           React.createElement('svg', { width: 28, height: 28, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round', strokeLinejoin: 'round' },

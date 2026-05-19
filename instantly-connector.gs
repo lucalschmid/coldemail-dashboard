@@ -62,14 +62,20 @@ function fetchOpts() {
 // ── Cache key ────────────────────────────────────────────────
 const CACHE_KEY = 'csd_dashboard_v1';
 
-// ── Entry point (JSONP) — reads from cache, responds instantly ─
+// ── Entry point (JSONP) — routes by ?action= parameter ────────
 function doGet(e) {
   const cb = (e.parameter && e.parameter.callback) || 'callback';
+
+  // Live proxy: inbox-level daily analytics from /accounts/analytics/daily
+  if (e.parameter && e.parameter.action === 'inbox_analytics') {
+    return handleInboxAnalytics(e, cb);
+  }
+
+  // Default: serve cached campaign dashboard data
   try {
     const props   = PropertiesService.getScriptProperties();
     const payload = props.getProperty(CACHE_KEY);
     if (!payload) {
-      // No cache yet — tell dashboard to use mock data and prompt manual refresh
       return ContentService
         .createTextOutput(cb + '(' + JSON.stringify({ error: 'cache_empty', message: 'Run refreshCache() in Apps Script editor to initialise.' }) + ')')
         .setMimeType(ContentService.MimeType.JAVASCRIPT);
@@ -80,6 +86,39 @@ function doGet(e) {
   } catch (err) {
     return ContentService
       .createTextOutput(cb + '(' + JSON.stringify({ error: err.message }) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+}
+
+// ── Inbox analytics proxy ─────────────────────────────────────
+function handleInboxAnalytics(e, cb) {
+  try {
+    const startDate = e.parameter.start_date;
+    const endDate   = e.parameter.end_date;
+    if (!startDate || !endDate) throw new Error('start_date and end_date are required');
+
+    let url = BASE_V2 + '/accounts/analytics/daily'
+      + '?start_date=' + encodeURIComponent(startDate)
+      + '&end_date='   + encodeURIComponent(endDate);
+    if (e.parameter.emails) url += '&emails[]=' + encodeURIComponent(e.parameter.emails);
+
+    const res  = UrlFetchApp.fetch(url, fetchOpts());
+    const code = res.getResponseCode();
+    const body = res.getContentText();
+
+    if (code !== 200) throw new Error('Instantly API ' + code + ': ' + body.substring(0, 200));
+
+    const data = JSON.parse(body);
+    const payload = JSON.stringify({
+      data: Array.isArray(data) ? data : [],
+      generated_at: new Date().toISOString(),
+    });
+    return ContentService
+      .createTextOutput(cb + '(' + payload + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(cb + '(' + JSON.stringify({ error: err.toString() }) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
 }
