@@ -90,37 +90,113 @@ function doGet(e) {
   }
 }
 
-// ── Inbox analytics proxy ─────────────────────────────────────
+// ── Analytics cache key ───────────────────────────────────────
+var ANALYTICS_CACHE_KEY = 'csd_analytics_v1';
+
+// ── Inbox analytics — serves pre-aggregated cache ─────────────
+// First call builds the cache inline (~30-60s for large workspaces).
+// Subsequent calls return instantly from Script Properties.
 function handleInboxAnalytics(e, cb) {
   try {
-    const startDate = e.parameter.start_date;
-    const endDate   = e.parameter.end_date;
-    if (!startDate || !endDate) throw new Error('start_date and end_date are required');
-
-    let url = BASE_V2 + '/accounts/analytics/daily'
-      + '?start_date=' + encodeURIComponent(startDate)
-      + '&end_date='   + encodeURIComponent(endDate);
-    if (e.parameter.emails) url += '&emails[]=' + encodeURIComponent(e.parameter.emails);
-
-    const res  = UrlFetchApp.fetch(url, fetchOpts());
-    const code = res.getResponseCode();
-    const body = res.getContentText();
-
-    if (code !== 200) throw new Error('Instantly API ' + code + ': ' + body.substring(0, 200));
-
-    const data = JSON.parse(body);
-    const payload = JSON.stringify({
-      data: Array.isArray(data) ? data : [],
-      generated_at: new Date().toISOString(),
-    });
+    var props = PropertiesService.getScriptProperties();
+    var cache = props.getProperty(ANALYTICS_CACHE_KEY);
+    if (!cache) {
+      refreshAnalyticsCache();
+      cache = props.getProperty(ANALYTICS_CACHE_KEY);
+    }
+    if (!cache) throw new Error('Analytics cache empty — run refreshAnalyticsCache() in the Apps Script editor.');
     return ContentService
-      .createTextOutput(cb + '(' + payload + ')')
+      .createTextOutput(cb + '(' + cache + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   } catch (err) {
     return ContentService
       .createTextOutput(cb + '(' + JSON.stringify({ error: err.toString() }) + ')')
       .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
+}
+
+// ── Analytics cache builder ───────────────────────────────────
+// Fetches all inboxes (paginated), pulls 3 months of daily data in
+// batches of 50 to stay under per-request row limits, then
+// pre-aggregates into four timeframe buckets per inbox.
+function refreshAnalyticsCache() {
+  var opts     = fetchOpts();
+  var today    = new Date();
+  var todayStr = fmtDate(today);
+
+  var cutoffs = {
+    'today': todayStr,
+    '7d':    fmtDate(daysAgo(today, 6)),
+    '30d':   fmtDate(daysAgo(today, 29)),
+    '3mo':   fmtDate(daysAgo(today, 89)),
+  };
+
+  var allEmails = fetchAllAccountEmails(opts);
+  Logger.log('Analytics cache: found ' + allEmails.length + ' accounts');
+
+  var inboxMap = {};
+  allEmails.forEach(function(email) {
+    inboxMap[email] = {
+      email:  email,
+      today:  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+      '7d':   { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+      '30d':  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+      '3mo':  { sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 },
+    };
+  });
+
+  var BATCH = 50;
+  for (var i = 0; i < allEmails.length; i += BATCH) {
+    var batch = allEmails.slice(i, i + BATCH);
+    var url   = BASE_V2 + '/accounts/analytics/daily'
+      + '?start_date=' + cutoffs['3mo'] + '&end_date=' + todayStr;
+    batch.forEach(function(e) { url += '&emails[]=' + encodeURIComponent(e); });
+
+    var res  = UrlFetchApp.fetch(url, opts);
+    var rows = safeJsonArray(res);
+
+    rows.forEach(function(row) {
+      var r = inboxMap[row.email_account];
+      if (!r || !row.date) return;
+      var d  = row.date;
+      var s  = num(row.sent), bo = num(row.bounced);
+      var ur = num(row.unique_replies), ar = num(row.unique_replies_automatic);
+      if (d >= cutoffs['3mo'])   { r['3mo'].sent += s;  r['3mo'].bounced += bo;  r['3mo'].uniqueReplies += ur;  r['3mo'].autoReplies += ar;  }
+      if (d >= cutoffs['30d'])   { r['30d'].sent += s;  r['30d'].bounced += bo;  r['30d'].uniqueReplies += ur;  r['30d'].autoReplies += ar;  }
+      if (d >= cutoffs['7d'])    { r['7d'].sent  += s;  r['7d'].bounced  += bo;  r['7d'].uniqueReplies  += ur;  r['7d'].autoReplies  += ar;  }
+      if (d === todayStr)        { r.today.sent  += s;  r.today.bounced  += bo;  r.today.uniqueReplies  += ur;  r.today.autoReplies  += ar;  }
+    });
+  }
+
+  var payload = JSON.stringify({
+    generated_at: new Date().toISOString(),
+    inboxes: Object.values(inboxMap),
+  });
+  PropertiesService.getScriptProperties().setProperty(ANALYTICS_CACHE_KEY, payload);
+  Logger.log('Analytics cache saved. Inboxes: ' + allEmails.length + ' | Size: ' + payload.length + ' bytes');
+}
+
+// ── Fetch all account email addresses (paginated) ─────────────
+function fetchAllAccountEmails(opts) {
+  var emails = [];
+  var startingAfter = null;
+  for (var page = 0; page < 20; page++) {
+    var url  = BASE_V2 + '/accounts?limit=100' + (startingAfter ? '&starting_after=' + startingAfter : '');
+    var res  = UrlFetchApp.fetch(url, opts);
+    if (res.getResponseCode() !== 200) break;
+    var json  = safeJson(res);
+    var items = json.items || json.data || (Array.isArray(json) ? json : []);
+    items.forEach(function(a) { if (a.email) emails.push(a.email); });
+    startingAfter = json.next_starting_after || null;
+    if (!startingAfter || items.length < 100) break;
+  }
+  return emails;
+}
+
+// ── Parse JSON array response safely ─────────────────────────
+function safeJsonArray(res) {
+  try { var r = JSON.parse(res.getContentText()); return Array.isArray(r) ? r : []; }
+  catch (e) { return []; }
 }
 
 // ── Cache refresh — run manually once, then via hourly trigger ─
@@ -135,7 +211,8 @@ function refreshCache() {
 function setupHourlyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('refreshCache').timeBased().everyHours(1).create();
-  Logger.log('Hourly trigger created for refreshCache');
+  ScriptApp.newTrigger('refreshAnalyticsCache').timeBased().everyHours(1).create();
+  Logger.log('Hourly triggers created for refreshCache and refreshAnalyticsCache');
 }
 
 // ── Main builder ─────────────────────────────────────────────

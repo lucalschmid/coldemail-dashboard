@@ -184,35 +184,21 @@ function App() {
     setAnalyticsLoading(true);
     setAnalyticsError(null);
     try {
-      const today = new Date();
-      const start = new Date(today);
-      start.setMonth(today.getMonth() - 3);
-      const startStr = start.toISOString().split('T')[0];
-      const endStr   = today.toISOString().split('T')[0];
-
       let data;
       if (hasGas) {
-        // Route through GAS proxy — CORS-free, works from file://
-        data = await window.DASHBOARD_DATA.loadAnalytics(startStr, endStr);
+        // Route through GAS proxy — pre-aggregated cache, CORS-free
+        data = await window.DASHBOARD_DATA.loadAnalytics();
       } else {
-        // Direct API fallback (requires dashboard served over http, not file://)
-        const res = await fetch(
-          'https://api.instantly.ai/api/v2/accounts/analytics/daily?start_date=' + startStr + '&end_date=' + endStr,
-          { headers: { Authorization: 'Bearer ' + analyticsApiKey } }
-        );
-        if (res.status === 401) throw new Error('Invalid API key. Please check the key below.');
-        if (res.status === 413) throw new Error('Too many inboxes for 3 months. Use the search to narrow by a specific inbox.');
-        if (!res.ok) throw new Error('Instantly API error ' + res.status + '.');
-        data = await res.json();
+        throw new Error('Direct API not supported for large workspaces. Configure APPS_SCRIPT_URL in data.js.');
       }
 
-      if (!Array.isArray(data)) throw new Error('Unexpected response format from API.');
+      if (!data || !Array.isArray(data.inboxes)) throw new Error('Unexpected response format from GAS.');
       setInboxRawData(data);
     } catch (err) {
       const msg = err.message || '';
       setAnalyticsError(
-        (msg.includes('Failed to fetch') || msg.includes('NetworkError'))
-          ? 'Connection failed. The dashboard must be served over http (not file://) for direct API calls. Configure APPS_SCRIPT_URL in data.js to avoid this.'
+        msg === 'JSONP timeout'
+          ? 'Timed out. If this is the first load the GAS cache is being built — wait ~60s then hit Refresh.'
           : msg
       );
     } finally {
@@ -323,33 +309,24 @@ function App() {
   const labels = useMemo(() => dayLabels(7), []);
 
   const processedInboxRows = useMemo(() => {
-    if (!inboxRawData || !Array.isArray(inboxRawData)) return [];
-    const todayStr = new Date().toISOString().split('T')[0];
-    const cutoff = new Date();
-    if (analyticsTimeframe === '7d') cutoff.setDate(cutoff.getDate() - 7);
-    else if (analyticsTimeframe === '30d') cutoff.setDate(cutoff.getDate() - 30);
-    else if (analyticsTimeframe === '3mo') cutoff.setMonth(cutoff.getMonth() - 3);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
+    if (!inboxRawData || !inboxRawData.inboxes) return [];
+    const tf = analyticsTimeframe;
+    const q  = inboxSearch.toLowerCase().trim();
 
-    const q = inboxSearch.toLowerCase().trim();
-    const agg = {};
-    for (const r of inboxRawData) {
-      const inRange = analyticsTimeframe === 'today' ? r.date === todayStr : r.date >= cutoffStr && r.date <= todayStr;
-      if (!inRange) continue;
-      if (q && !r.email_account.toLowerCase().includes(q)) continue;
-      const email = r.email_account;
-      if (!agg[email]) agg[email] = { email, domain: email.split('@')[1] || email, sent: 0, bounced: 0, uniqueReplies: 0, autoReplies: 0 };
-      const a = agg[email];
-      a.sent += r.sent || 0;
-      a.bounced += r.bounced || 0;
-      a.autoReplies += r.unique_replies_automatic || 0;
-      a.uniqueReplies += r.unique_replies || 0;
-    }
-    const rows = Object.values(agg).map(a => ({
-      ...a,
-      realReplies: Math.max(0, a.uniqueReplies - a.autoReplies),
-      bounceRate: a.sent > 0 ? a.bounced / a.sent : 0,
-    }));
+    const rows = inboxRawData.inboxes
+      .filter(inbox => !q || inbox.email.toLowerCase().includes(q))
+      .map(inbox => {
+        const m = inbox[tf] || {};
+        const sent = m.sent || 0, bounced = m.bounced || 0;
+        const uniqueReplies = m.uniqueReplies || 0, autoReplies = m.autoReplies || 0;
+        return {
+          email: inbox.email,
+          domain: inbox.email.split('@')[1] || inbox.email,
+          sent, bounced, uniqueReplies, autoReplies,
+          realReplies: Math.max(0, uniqueReplies - autoReplies),
+          bounceRate: sent > 0 ? bounced / sent : 0,
+        };
+      });
 
     const dir = analyticsSortDir === 'asc' ? 1 : -1;
     const cmp = (a, b) => {
@@ -360,11 +337,8 @@ function App() {
       if (analyticsSortCol === 'replies') return dir * (a.uniqueReplies - b.uniqueReplies);
       return dir * (a.sent - b.sent);
     };
-    if (analyticsGroupDomain) {
-      rows.sort((a, b) => a.domain.localeCompare(b.domain) || cmp(a, b));
-    } else {
-      rows.sort(cmp);
-    }
+    if (analyticsGroupDomain) rows.sort((a, b) => a.domain.localeCompare(b.domain) || cmp(a, b));
+    else rows.sort(cmp);
     return rows;
   }, [inboxRawData, analyticsTimeframe, inboxSearch, analyticsSortCol, analyticsSortDir, analyticsGroupDomain]);
 

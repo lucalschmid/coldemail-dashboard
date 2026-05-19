@@ -207,14 +207,14 @@ window.DASHBOARD_DATA = (function () {
   const mock = { generated_at: generated, campaigns, clients };
 
   // ---------- JSONP loader (CORS-free) ----------
-  function loadJSONP(url, callbackParam = 'callback') {
+  function loadJSONP(url, callbackParam = 'callback', timeoutMs = 12000) {
     return new Promise((resolve, reject) => {
       const cbName = '__cs_dashboard_cb_' + Date.now();
       const script = document.createElement('script');
       let timer = setTimeout(() => {
         cleanup();
         reject(new Error('JSONP timeout'));
-      }, 12000);
+      }, timeoutMs);
       function cleanup() {
         clearTimeout(timer);
         delete window[cbName];
@@ -247,22 +247,23 @@ window.DASHBOARD_DATA = (function () {
     }
   }
 
-  // Fetch inbox-level daily analytics via the GAS proxy (CORS-free from file://)
-  async function loadAnalytics(startDate, endDate, emailFilter) {
+  // Fetch pre-aggregated inbox analytics via GAS proxy (CORS-free from file://)
+  // First call may take up to 90s if the GAS cache is empty (it builds inline).
+  async function loadAnalytics() {
     if (!APPS_SCRIPT_URL) throw new Error('APPS_SCRIPT_URL not set in data.js');
     const sep = APPS_SCRIPT_URL.includes('?') ? '&' : '?';
-    let url = APPS_SCRIPT_URL + sep
-      + 'action=inbox_analytics'
-      + '&start_date=' + encodeURIComponent(startDate)
-      + '&end_date='   + encodeURIComponent(endDate);
-    if (emailFilter) url += '&emails=' + encodeURIComponent(emailFilter);
-    const result = await loadJSONP(url);
+    const url = APPS_SCRIPT_URL + sep + 'action=inbox_analytics';
+    // 90s timeout: first load builds cache inline in GAS (~30-60s for large workspaces)
+    const result = await loadJSONP(url, 'callback', 90000);
     if (result.error) throw new Error(result.error);
-    // Old GAS code (without handleInboxAnalytics) returns campaigns cache instead
-    if (!('data' in result) && ('campaigns' in result || 'generated_at' in result)) {
-      throw new Error('GAS is running an old version. In Apps Script → Deploy → Manage deployments → edit the deployment → set version to "New version" → save.');
+    if (!result.inboxes) {
+      throw new Error(
+        result.campaigns
+          ? 'GAS is still running old code — deploy the latest version and try again.'
+          : 'GAS returned unexpected format. Deploy the latest GAS code and run refreshAnalyticsCache() once.'
+      );
     }
-    return result.data || [];
+    return result; // { inboxes: [...], generated_at }
   }
 
   return { load, loadAnalytics, mock, APPS_SCRIPT_URL };
