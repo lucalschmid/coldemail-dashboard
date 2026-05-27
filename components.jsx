@@ -76,7 +76,7 @@ function DayChart({ data, labels }) {
 }
 
 // ---------- Client group ----------
-function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete }) {
+function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags }) {
   const flagPill = group.flagged > 0
     ? { cls: 'crit', txt: group.flagged + ' critical' }
     : group.warned > 0
@@ -128,14 +128,18 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete }) {
         React.createElement('span', null, 'Runway'),
         React.createElement('span', { className: 'right' }, 'Trend')),
       // Campaign rows
-      group.campaigns.map((c) => React.createElement(CampaignRow, { key: c.id, campaign: c, onDelete }))
+      group.campaigns.map((c) => React.createElement(CampaignRow, {
+        key: c.id, campaign: c, onDelete,
+        onEditTags: onEditTags ? () => onEditTags(c) : null,
+      }))
     )
   );
 }
 
 // ---------- Campaign row ----------
-function CampaignRow({ campaign: c, onDelete }) {
+function CampaignRow({ campaign: c, onDelete, onEditTags }) {
   const replyRate = c.sends7d > 0 ? (c.replies7d / c.sends7d) : null;
+  const tags = c.inboxTags || [];
   return React.createElement('div', { className: 'csd-camprow' + (c.status !== 'Active' ? ' is-paused' : '') + (c.staleSev > 0 ? ' is-idle' : '') },
     React.createElement('span', { className: 'gutter' },
       onDelete
@@ -154,11 +158,18 @@ function CampaignRow({ campaign: c, onDelete }) {
       React.createElement('span', { className: 'n', title: c.campaign }, c.campaign),
       React.createElement('span', { className: 'sub' },
         React.createElement(StatusDot, { status: c.status }),
-        (c.inboxTags && c.inboxTags.length > 0) && React.createElement('span', {
-          className: 'csd-tag-chips',
-          title: 'Inbox tag' + (c.inboxTags.length > 1 ? 's' : '') + ': ' + c.inboxTags.join(', '),
-        }, c.inboxTags.map((t, i) =>
-          React.createElement('span', { key: i, className: 'csd-tag-chip' }, t))))),
+        tags.length > 0
+          ? React.createElement('span', {
+              className: 'csd-tag-chips' + (onEditTags ? ' csd-tag-chips-clickable' : ''),
+              title: onEditTags ? 'Click to edit inbox tag assignment' : 'Inbox tag' + (tags.length > 1 ? 's' : '') + ': ' + tags.join(', '),
+              onClick: onEditTags ? (e) => { e.stopPropagation(); onEditTags(); } : undefined,
+            }, tags.map((t, i) =>
+              React.createElement('span', { key: i, className: 'csd-tag-chip' }, t)))
+          : (onEditTags && React.createElement('button', {
+              className: 'csd-tag-add',
+              title: 'Assign inbox tags to this campaign',
+              onClick: (e) => { e.stopPropagation(); onEditTags(); },
+            }, '+ assign tags')))),
     React.createElement('span', { className: 'stat-num' + (c.sends7d === 0 ? ' muted' : '') },
       fmt.num(c.sends7d),
       React.createElement('span', { className: 'sublabel' }, c.dailyRate > 0 ? Math.round(c.dailyRate) + '/day' : 'no sends')),

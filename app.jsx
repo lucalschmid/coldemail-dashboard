@@ -139,6 +139,16 @@ function App() {
   const [dragCampaignId, setDragCampaignId] = useState(null);
   const [dragOverClient, setDragOverClient] = useState(null);
 
+  // Manual campaign → inbox-tag mapping. Overrides whatever GAS auto-detected
+  // from the campaign's email_list. Needed because Instantly campaigns that use
+  // tag-based account selection don't populate email_list, so the auto-detection
+  // returns []. Stored as { [campaignId]: string[] }.
+  const [campaignTagOverrides, setCampaignTagOverrides] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('csd:campaign-tags:v1') || '{}'); } catch (e) { return {}; }
+  });
+  const [editingTagsFor, setEditingTagsFor] = useState(null); // campaign object or null
+  const [tagEditorSelection, setTagEditorSelection] = useState([]);
+
   // Add-list modal
   const [addListModal, setAddListModal] = useState(null); // { categoryId } | null
   const [addListForm, setAddListForm] = useState({ name: '', status: 'Active', lastActive: '', leadCount: '', runningText: '', csvData: null, csvName: '' });
@@ -155,7 +165,7 @@ function App() {
   const [analyticsError, setAnalyticsError] = useState(null);
   const [analyticsSortCol, setAnalyticsSortCol] = useState('sent');
   const [analyticsSortDir, setAnalyticsSortDir] = useState('desc');
-  const [analyticsGroupBy, setAnalyticsGroupBy] = useState('none'); // 'none' | 'tag' | 'client'
+  const [analyticsGroupBy, setAnalyticsGroupBy] = useState('tag'); // 'tag' | 'client' | 'none'
   const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const analyticsAutoLoaded = useRef(false);
 
@@ -240,10 +250,18 @@ function App() {
     const delSet = new Set(deletedCampaignIds);
     const base = data.campaigns
       .filter(c => !delSet.has(c.id))
-      .map((c) => window.CSD.derive({
-        ...c,
-        client: campaignClientOverrides[c.id] || clientNames[c.client] || c.client,
-      }, thresholds));
+      .map((c) => {
+        const d = window.CSD.derive({
+          ...c,
+          client: campaignClientOverrides[c.id] || clientNames[c.client] || c.client,
+        }, thresholds);
+        // Manual tag override wins over GAS auto-detection. An override of [] is
+        // a deliberate "no tags assigned" and must still beat the auto value.
+        if (Object.prototype.hasOwnProperty.call(campaignTagOverrides, c.id)) {
+          d.inboxTags = campaignTagOverrides[c.id];
+        }
+        return d;
+      });
     const custom = customLists
       .filter(l => !delSet.has(l.id))
       .map(l => window.CSD.derive({
@@ -254,7 +272,7 @@ function App() {
         bounced: 0, lastSendDate: null, sparkline: [], isCustom: true,
       }, thresholds));
     return [...base, ...custom];
-  }, [data, thresholds, clientNames, customLists, deletedCampaignIds, campaignClientOverrides]);
+  }, [data, thresholds, clientNames, customLists, deletedCampaignIds, campaignClientOverrides, campaignTagOverrides]);
 
   const actions = useMemo(() => window.CSD.buildActions(derived, thresholds), [derived, thresholds]);
   const allGroups = useMemo(() => {
@@ -382,6 +400,31 @@ function App() {
     }
     return acc;
   }, [processedInboxRows, analyticsGroupBy]);
+
+  // All inbox tags currently in use across the workspace — feeds the tag editor.
+  const availableTags = useMemo(() => {
+    if (!inboxRawData || !inboxRawData.inboxes) return [];
+    const set = new Set();
+    for (const inbox of inboxRawData.inboxes) {
+      if (inbox.g) set.add(inbox.g);
+    }
+    return Array.from(set).sort();
+  }, [inboxRawData]);
+
+  // tag → [{ campaign, status }] map. Used in the Inbox Analytics tab to show
+  // whether an inbox is currently active in a campaign or just warming up.
+  const inboxTagToCampaigns = useMemo(() => {
+    const map = {};
+    for (const c of derived) {
+      const tags = c.inboxTags || [];
+      for (const t of tags) {
+        if (!t) continue;
+        if (!map[t]) map[t] = [];
+        map[t].push({ campaign: c.campaign, status: c.status });
+      }
+    }
+    return map;
+  }, [derived]);
 
   // Auto-collapse every group whenever the user switches grouping on (or data first arrives).
   // Keeps the table scannable instead of dumping every inbox on the screen.
@@ -786,11 +829,12 @@ function App() {
               onToggle: () => toggleGroup(g.client),
               dayLabels: labels,
               onDelete: deleteCampaign,
+              onEditTags: openEditTags,
             }))
         : React.createElement('div', { className: 'csd-clientgroup open' },
             React.createElement('div', { className: 'csd-clientgroup-body' },
               filteredGroups.flatMap(g => g.campaigns).map((c) =>
-                React.createElement(CampaignRow, { key: c.id, campaign: c, onDelete: deleteCampaign }))))));
+                React.createElement(CampaignRow, { key: c.id, campaign: c, onDelete: deleteCampaign, onEditTags: () => openEditTags(c) }))))));
 
   // ---------- Delete handlers ----------
   const deleteCampaign = (id) => {
@@ -849,6 +893,31 @@ function App() {
     try { localStorage.setItem('csd:campaign-client:v1', JSON.stringify(next)); } catch (e) {}
     setDragCampaignId(null);
     setDragOverClient(null);
+  };
+
+  // ---------- Campaign → inbox-tag manual mapping ----------
+  const openEditTags = (campaign) => {
+    // Need the tag list, which lives in inbox analytics data. Trigger a load
+    // if it hasn't been fetched yet — the modal renders a hint while loading.
+    if (!inboxRawData) {
+      const hasSource = window.DASHBOARD_DATA?.APPS_SCRIPT_URL || analyticsApiKey;
+      if (hasSource) loadInboxAnalytics();
+    }
+    setTagEditorSelection(Array.isArray(campaign.inboxTags) ? [...campaign.inboxTags] : []);
+    setEditingTagsFor(campaign);
+  };
+  const saveCampaignTags = (campaignId, tags) => {
+    const next = { ...campaignTagOverrides, [campaignId]: tags };
+    setCampaignTagOverrides(next);
+    try { localStorage.setItem('csd:campaign-tags:v1', JSON.stringify(next)); } catch (e) {}
+    setEditingTagsFor(null);
+  };
+  const resetCampaignTags = (campaignId) => {
+    const next = { ...campaignTagOverrides };
+    delete next[campaignId];
+    setCampaignTagOverrides(next);
+    try { localStorage.setItem('csd:campaign-tags:v1', JSON.stringify(next)); } catch (e) {}
+    setEditingTagsFor(null);
   };
 
   // ---------- Manual lead list handlers ----------
@@ -1246,9 +1315,9 @@ function App() {
           React.createElement('div', { className: 'ia-groupby-wrap' },
             React.createElement('span', { className: 'ia-groupby-label' }, 'Group'),
             React.createElement('div', { className: 'csd-segment' },
-              React.createElement('button', { className: analyticsGroupBy === 'none' ? 'active' : '', onClick: () => setAnalyticsGroupBy('none') }, 'None'),
+              React.createElement('button', { className: analyticsGroupBy === 'tag' ? 'active' : '', onClick: () => setAnalyticsGroupBy('tag') }, 'Tag'),
               React.createElement('button', { className: analyticsGroupBy === 'client' ? 'active' : '', onClick: () => setAnalyticsGroupBy('client') }, 'Client'),
-              React.createElement('button', { className: analyticsGroupBy === 'tag' ? 'active' : '', onClick: () => setAnalyticsGroupBy('tag') }, 'Tag'))),
+              React.createElement('button', { className: analyticsGroupBy === 'none' ? 'active' : '', onClick: () => setAnalyticsGroupBy('none') }, 'None'))),
           processedInboxRows.length > 0 && React.createElement('button', {
             className: 'csd-ghost-btn',
             onClick: exportAnalyticsCSV,
@@ -1386,11 +1455,28 @@ function App() {
                       const br = r.bounceRate;
                       if (groupKey && collapsedGroups.has(groupKey)) continue;
                       const brClass = br > 0.05 ? 'ia-bad' : br > 0.02 ? 'ia-warn' : '';
+                      const tagCamps = (r.tag && inboxTagToCampaigns[r.tag]) || [];
+                      const activeCamps = tagCamps.filter(c => c.status === 'Active');
+                      const inboxStatus = activeCamps.length > 0
+                        ? React.createElement('span', {
+                            className: 'ia-inbox-status ia-inbox-status-active',
+                            title: 'Active in: ' + activeCamps.map(c => c.campaign).join(', '),
+                          },
+                            React.createElement('span', { className: 'ia-inbox-status-dot' }),
+                            activeCamps[0].campaign + (activeCamps.length > 1 ? ' +' + (activeCamps.length - 1) : ''))
+                        : React.createElement('span', {
+                            className: 'ia-inbox-status ia-inbox-status-warmup',
+                            title: 'Not assigned to any active campaign — warm-up only',
+                          },
+                            React.createElement('span', { className: 'ia-inbox-status-dot' }),
+                            'Warm-up only');
                       out.push(React.createElement('tr', { key: r.email, className: 'ia-row' },
                         React.createElement('td', { className: 'ia-td ia-td-inbox' },
-                          React.createElement('span', { className: 'ia-inbox-local' }, r.email.split('@')[0]),
-                          React.createElement('span', { className: 'ia-inbox-at' }, '@'),
-                          React.createElement('span', { className: 'ia-inbox-domain' }, r.domain)),
+                          React.createElement('div', { className: 'ia-inbox-line' },
+                            React.createElement('span', { className: 'ia-inbox-local' }, r.email.split('@')[0]),
+                            React.createElement('span', { className: 'ia-inbox-at' }, '@'),
+                            React.createElement('span', { className: 'ia-inbox-domain' }, r.domain)),
+                          inboxStatus),
                         React.createElement('td', { className: 'ia-td ia-td-num' }, num(r.sent)),
                         React.createElement('td', { className: 'ia-td ia-td-num ia-replies-total' }, num(r.uniqueReplies)),
                         React.createElement('td', { className: 'ia-td ia-td-num ia-replies-real' }, num(r.realReplies)),
@@ -1427,6 +1513,57 @@ function App() {
       onClearResolved: clearResolved,
       onJump: onJumpToCampaign,
     }),
+    editingTagsFor && React.createElement('div', {
+      className: 'csd-modal-overlay',
+      onClick: () => setEditingTagsFor(null),
+    },
+      React.createElement('div', { className: 'csd-modal', onClick: e => e.stopPropagation() },
+        React.createElement('div', { className: 'csd-modal-header' },
+          React.createElement('h2', null, 'Assign inbox tags'),
+          React.createElement('button', { className: 'csd-modal-close', onClick: () => setEditingTagsFor(null) },
+            React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' },
+              React.createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+              React.createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 })))),
+        React.createElement('div', { className: 'csd-modal-body' },
+          React.createElement('div', { className: 'csd-tageditor-sub' },
+            'Campaign: ', React.createElement('strong', null, editingTagsFor.campaign)),
+          availableTags.length === 0
+            ? React.createElement('div', { className: 'csd-tageditor-empty' },
+                analyticsLoading
+                  ? 'Loading inbox tags…'
+                  : 'No inbox tags loaded yet. Open the Inbox Analytics tab to load them, then come back.')
+            : React.createElement('div', { className: 'csd-tageditor-list' },
+                availableTags.map((t) => {
+                  const checked = tagEditorSelection.includes(t);
+                  return React.createElement('label', { key: t, className: 'csd-tageditor-row' + (checked ? ' is-checked' : '') },
+                    React.createElement('input', {
+                      type: 'checkbox',
+                      checked,
+                      onChange: () => {
+                        setTagEditorSelection(prev =>
+                          prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
+                        );
+                      },
+                    }),
+                    React.createElement('span', { className: 'csd-tageditor-label' }, t));
+                })),
+          React.createElement('div', { className: 'csd-modal-actions' },
+            Object.prototype.hasOwnProperty.call(campaignTagOverrides, editingTagsFor.id) && React.createElement('button', {
+              className: 'csd-ghost-btn',
+              onClick: () => resetCampaignTags(editingTagsFor.id),
+              title: 'Clear manual override and use the value Instantly reports',
+            }, 'Reset to auto-detected'),
+            React.createElement('div', { className: 'csd-modal-actions-spacer' }),
+            React.createElement('button', {
+              className: 'csd-ghost-btn',
+              onClick: () => setEditingTagsFor(null),
+            }, 'Cancel'),
+            React.createElement('button', {
+              className: 'csd-primary-btn',
+              onClick: () => saveCampaignTags(editingTagsFor.id, tagEditorSelection),
+              disabled: availableTags.length === 0,
+            }, 'Save'))))),
+
     addListModal && React.createElement('div', {
       className: 'csd-modal-overlay',
       onClick: () => setAddListModal(null),

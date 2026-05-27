@@ -576,6 +576,11 @@ html, body { margin: 0; padding: 0; }
   flex-wrap: wrap;
 }
 .csd-tag-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.csd-tag-chips-clickable { cursor: pointer; }
+.csd-tag-chips-clickable:hover .csd-tag-chip {
+  border-color: var(--d-accent);
+  color: var(--d-fg);
+}
 .csd-tag-chip {
   display: inline-block;
   font-size: 10.5px;
@@ -591,7 +596,21 @@ html, body { margin: 0; padding: 0; }
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: border-color 120ms ease, color 120ms ease;
 }
+.csd-tag-add {
+  background: transparent;
+  border: 1px dashed var(--d-rule);
+  color: var(--d-fg-mute);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+.csd-tag-add:hover { border-color: var(--d-accent); color: var(--d-fg); }
 .csd-camprow.is-idle .name-cell .n { color: var(--d-fg-2); }
 .csd-camprow.can-rerun {
   background: linear-gradient(90deg, rgba(214,184,99,0.06) 0%, transparent 60%);
@@ -1832,6 +1851,65 @@ html, body { margin: 0; padding: 0; }
   flex-direction: column;
   gap: 16px;
 }
+
+/* Tag editor modal */
+.csd-tageditor-sub {
+  font-size: 12.5px;
+  color: var(--d-fg-mute);
+}
+.csd-tageditor-sub strong { color: var(--d-fg); font-weight: 600; }
+.csd-tageditor-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--d-fg-mute);
+  font-size: 12.5px;
+  border: 1px dashed var(--d-rule);
+  border-radius: 10px;
+}
+.csd-tageditor-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid var(--d-rule);
+  border-radius: 10px;
+}
+.csd-tageditor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--d-rule);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--d-fg-2);
+  user-select: none;
+}
+.csd-tageditor-row:last-child { border-bottom: 0; }
+.csd-tageditor-row:hover { background: var(--d-row-hover); }
+.csd-tageditor-row.is-checked { background: var(--d-row-hover-strong); color: var(--d-fg); }
+.csd-tageditor-row input[type="checkbox"] { margin: 0; cursor: pointer; }
+.csd-tageditor-label { flex: 1; }
+.csd-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+.csd-modal-actions-spacer { flex: 1; }
+.csd-primary-btn {
+  background: var(--d-accent);
+  color: #fff;
+  border: 1px solid var(--d-accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.csd-primary-btn:hover { opacity: 0.9; }
+.csd-primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .csd-modal-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2070,6 +2148,35 @@ html, body { margin: 0; padding: 0; }
 .ia-inbox-local { color: var(--d-fg); font-weight: 500; }
 .ia-inbox-at { color: var(--d-fg-mute); margin: 0 1px; }
 .ia-inbox-domain { color: var(--d-fg-3); }
+.ia-inbox-line { display: block; }
+.ia-inbox-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 2px 7px 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--d-rule);
+  background: var(--d-bg-soft);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ia-inbox-status-dot {
+  width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0;
+}
+.ia-inbox-status-active { color: var(--d-positive); border-color: rgba(46,160,67,0.35); }
+.ia-inbox-status-active .ia-inbox-status-dot { background: var(--d-positive); }
+.ia-inbox-status-warmup { color: var(--d-fg-mute); }
+.ia-inbox-status-warmup .ia-inbox-status-dot {
+  background: transparent;
+  border: 1.5px solid var(--d-fg-mute);
+  width: 8px; height: 8px;
+}
 .ia-replies-total { color: var(--d-fg); font-weight: 500; }
 .ia-replies-real  { color: var(--d-positive); }
 .ia-replies-auto  { color: var(--d-fg-mute); }
