@@ -829,7 +829,10 @@ function App() {
               onToggle: () => toggleGroup(g.client),
               dayLabels: labels,
               onDelete: deleteCampaign,
-              onEditTags: openEditTags,
+              // Lazy wrapper: openEditTags is declared further down. Passing it
+              // directly captures undefined at this point; wrapping defers the
+              // lookup to click time.
+              onEditTags: (c) => openEditTags(c),
             }))
         : React.createElement('div', { className: 'csd-clientgroup open' },
             React.createElement('div', { className: 'csd-clientgroup-body' },
