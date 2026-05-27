@@ -367,6 +367,42 @@ function App() {
     };
   }, [processedInboxRows]);
 
+  const groupTotals = useMemo(() => {
+    if (analyticsGroupBy === 'none') return {};
+    const acc = {};
+    for (const r of processedInboxRows) {
+      const k = analyticsGroupBy === 'tag' ? r.tag : r.client;
+      if (!k) continue;
+      if (!acc[k]) acc[k] = { sent: 0, bounced: 0, replies: 0, realReplies: 0, autoReplies: 0 };
+      acc[k].sent += r.sent;
+      acc[k].bounced += r.bounced;
+      acc[k].replies += r.uniqueReplies;
+      acc[k].realReplies += r.realReplies;
+      acc[k].autoReplies += r.autoReplies;
+    }
+    for (const k of Object.keys(acc)) {
+      acc[k].bounceRate = acc[k].sent > 0 ? acc[k].bounced / acc[k].sent : 0;
+    }
+    return acc;
+  }, [processedInboxRows, analyticsGroupBy]);
+
+  // Auto-collapse every group whenever the user switches grouping on (or data first arrives).
+  // Keeps the table scannable instead of dumping every inbox on the screen.
+  useEffect(() => {
+    if (analyticsGroupBy === 'none') {
+      setCollapsedGroups(new Set());
+      return;
+    }
+    if (!inboxRawData) return;
+    const keys = new Set();
+    for (const inbox of inboxRawData.inboxes || []) {
+      const tag = inbox.g || '';
+      const k = analyticsGroupBy === 'tag' ? tag : (tag ? tag.split(' ')[0] : 'Untagged');
+      if (k) keys.add(k);
+    }
+    setCollapsedGroups(keys);
+  }, [analyticsGroupBy, inboxRawData]);
+
   const onResolve = (id) => {
     const next = { ...resolved, [id]: Date.now() };
     setResolved(next); saveResolved(next);
@@ -1340,19 +1376,27 @@ function App() {
                           next.has(gk) ? next.delete(gk) : next.add(gk);
                           return next;
                         });
+                        const gt = groupTotals[groupKey] || { sent: 0, replies: 0, realReplies: 0, autoReplies: 0, bounceRate: 0 };
+                        const gbr = gt.bounceRate;
+                        const gbrClass = gbr > 0.05 ? 'ia-bad' : gbr > 0.02 ? 'ia-warn' : '';
                         out.push(React.createElement('tr', {
                           key: 'group-' + groupKey,
                           className: 'ia-domain-row ia-domain-row-toggle',
                           onClick: () => toggleGroup(groupKey),
                         },
-                          React.createElement('td', { colSpan: 6 },
+                          React.createElement('td', { className: 'ia-domain-td-label' },
                             React.createElement('div', { className: 'ia-domain-inner' },
                               React.createElement('svg', {
                                 className: 'ia-group-chev' + (isCollapsed ? ' ia-group-chev-collapsed' : ''),
                                 width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
                               },
                                 React.createElement('polyline', { points: '6 9 12 15 18 9' })),
-                              React.createElement('span', { className: 'ia-domain-label' }, groupKey)))));
+                              React.createElement('span', { className: 'ia-domain-label' }, groupKey))),
+                          React.createElement('td', { className: 'ia-domain-td-num' }, num(gt.sent)),
+                          React.createElement('td', { className: 'ia-domain-td-num ia-replies-total' }, num(gt.replies)),
+                          React.createElement('td', { className: 'ia-domain-td-num ia-replies-real' }, num(gt.realReplies)),
+                          React.createElement('td', { className: 'ia-domain-td-num ia-replies-auto' }, num(gt.autoReplies)),
+                          React.createElement('td', { className: 'ia-domain-td-num ' + gbrClass }, pct(gbr))));
                       }
                       const br = r.bounceRate;
                       if (groupKey && collapsedGroups.has(groupKey)) continue;
