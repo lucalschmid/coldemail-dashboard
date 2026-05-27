@@ -1436,6 +1436,29 @@ function App() {
                         const gt = groupTotals[groupKey] || { sent: 0, replies: 0, realReplies: 0, autoReplies: 0, bounceRate: 0 };
                         const gbr = gt.bounceRate;
                         const gbrClass = gbr > 0.05 ? 'ia-bad' : gbr > 0.02 ? 'ia-warn' : '';
+                        // When grouped by tag, surface the same active/warm-up badge
+                        // we render on individual inbox rows so the header tells
+                        // you at a glance which campaign (if any) is using this tag.
+                        let groupStatus = null;
+                        if (analyticsGroupBy === 'tag') {
+                          const gCamps = inboxTagToCampaigns[groupKey] || [];
+                          const gActive = gCamps.filter(c => c.status === 'Active');
+                          groupStatus = gActive.length > 0
+                            ? React.createElement('span', {
+                                className: 'ia-inbox-status ia-inbox-status-active ia-domain-status',
+                                title: 'Active in: ' + gActive.map(c => c.campaign).join(', '),
+                                onClick: (e) => e.stopPropagation(),
+                              },
+                                React.createElement('span', { className: 'ia-inbox-status-dot' }),
+                                gActive[0].campaign + (gActive.length > 1 ? ' +' + (gActive.length - 1) : ''))
+                            : React.createElement('span', {
+                                className: 'ia-inbox-status ia-inbox-status-warmup ia-domain-status',
+                                title: 'No active campaign uses this tag — warm-up only',
+                                onClick: (e) => e.stopPropagation(),
+                              },
+                                React.createElement('span', { className: 'ia-inbox-status-dot' }),
+                                'Warm-up only');
+                        }
                         out.push(React.createElement('tr', {
                           key: 'group-' + groupKey,
                           className: 'ia-domain-row ia-domain-row-toggle',
@@ -1448,7 +1471,8 @@ function App() {
                                 width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round',
                               },
                                 React.createElement('polyline', { points: '6 9 12 15 18 9' })),
-                              React.createElement('span', { className: 'ia-domain-label' }, groupKey))),
+                              React.createElement('span', { className: 'ia-domain-label' }, groupKey),
+                              groupStatus)),
                           React.createElement('td', { className: 'ia-domain-td-num' }, num(gt.sent)),
                           React.createElement('td', { className: 'ia-domain-td-num ia-replies-total' }, num(gt.replies)),
                           React.createElement('td', { className: 'ia-domain-td-num ia-replies-real' }, num(gt.realReplies)),

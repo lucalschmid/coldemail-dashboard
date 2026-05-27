@@ -2177,6 +2177,9 @@ html, body { margin: 0; padding: 0; }
   border: 1.5px solid var(--d-fg-mute);
   width: 8px; height: 8px;
 }
+/* Same badge re-used inside the tag-group header row. Sits inline next to
+   the label without the row-row "block under email" offset. */
+.ia-domain-status { margin-top: 0; margin-left: 4px; }
 .ia-replies-total { color: var(--d-fg); font-weight: 500; }
 .ia-replies-real  { color: var(--d-positive); }
 .ia-replies-auto  { color: var(--d-fg-mute); }
