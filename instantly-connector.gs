@@ -237,6 +237,14 @@ function buildDashboardData() {
   const start30 = fmtDate(daysAgo(today, 30)); // wide window to find 7 active days
   const opts    = fetchOpts();
 
+  // Load email→tag map once so we can resolve each campaign's inbox tags below.
+  // Stored by setAccountsList(). Missing map is non-fatal — we just emit [].
+  var accountsMap = {};
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(ACCOUNTS_KEY);
+    if (raw) accountsMap = JSON.parse(raw) || {};
+  } catch (e) { accountsMap = {}; }
+
   const campaigns = fetchCampaigns(opts);
   if (!campaigns.length) return { generated_at: new Date().toISOString(), campaigns: [] };
 
@@ -265,6 +273,16 @@ function buildDashboardData() {
     const totalLeads = num(s.leads_count);
     const contacted  = num(s.contacted_count);
 
+    // Resolve which inbox tag(s) this campaign uses by intersecting its
+    // sender accounts (Instantly's email_list) with our email→tag map.
+    var senders = Array.isArray(c.email_list) ? c.email_list : [];
+    var tagSet  = {};
+    senders.forEach(function(em) {
+      var t = accountsMap[em];
+      if (t) tagSet[t] = true;
+    });
+    var inboxTags = Object.keys(tagSet).sort();
+
     return {
       id:           c.id,
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
@@ -273,13 +291,13 @@ function buildDashboardData() {
       sends7d:      num(s.contacted_count),
       replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),
       posReplies7d: num(s.total_opportunities),
-      bookings7d:   0,
       totalLeads,
       contacted,
       leadsLeft:    Math.max(0, totalLeads - contacted),
       bounced:      num(s.bounced_count),
       lastSendDate,
       sparkline,
+      inboxTags,
     };
   });
 

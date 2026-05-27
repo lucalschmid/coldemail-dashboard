@@ -125,7 +125,6 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete }) {
         React.createElement('span', null, 'Sends 7d'),
         React.createElement('span', null, 'Reply rate'),
         React.createElement('span', null, 'PRR'),
-        React.createElement('span', null, 'Bookings'),
         React.createElement('span', null, 'Runway'),
         React.createElement('span', { className: 'right' }, 'Trend')),
       // Campaign rows
@@ -154,7 +153,12 @@ function CampaignRow({ campaign: c, onDelete }) {
     React.createElement('div', { className: 'name-cell' },
       React.createElement('span', { className: 'n', title: c.campaign }, c.campaign),
       React.createElement('span', { className: 'sub' },
-        React.createElement(StatusDot, { status: c.status }))),
+        React.createElement(StatusDot, { status: c.status }),
+        (c.inboxTags && c.inboxTags.length > 0) && React.createElement('span', {
+          className: 'csd-tag-chips',
+          title: 'Inbox tag' + (c.inboxTags.length > 1 ? 's' : '') + ': ' + c.inboxTags.join(', '),
+        }, c.inboxTags.map((t, i) =>
+          React.createElement('span', { key: i, className: 'csd-tag-chip' }, t))))),
     React.createElement('span', { className: 'stat-num' + (c.sends7d === 0 ? ' muted' : '') },
       fmt.num(c.sends7d),
       React.createElement('span', { className: 'sublabel' }, c.dailyRate > 0 ? Math.round(c.dailyRate) + '/day' : 'no sends')),
@@ -164,9 +168,6 @@ function CampaignRow({ campaign: c, onDelete }) {
     React.createElement('span', { className: 'stat-num ' + (c.prrSev === 2 ? 'crit' : c.prrSev === 1 ? 'warn' : c.prr !== null ? '' : 'muted') },
       c.prr === null ? '—' : (c.prr * 100).toFixed(2) + '%',
       React.createElement('span', { className: 'sublabel' }, c.posReplies7d + ' positive')),
-    React.createElement('span', { className: 'stat-num' + (c.bookings7d > 0 ? ' good' : ' muted') },
-      c.bookings7d || 0,
-      React.createElement('span', { className: 'sublabel' }, 'booked')),
     React.createElement(RunwayBar, { campaign: c }),
     React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
       React.createElement(Sparkline, { data: c.sparkline, sev: c.overall, width: 90, height: 26 }))
@@ -238,7 +239,7 @@ function NotifDrawer({ open, onClose, items, resolved, onResolve, onClearResolve
                   React.createElement('div', { className: 'meta' },
                     React.createElement('span', { className: 'client' }, item.client),
                     React.createElement('span', null, '·'),
-                    React.createElement('span', null, item.kind === 'runway' ? 'Lead runway' : item.kind === 'stale' ? 'Idle list' : item.kind === 'prr' ? 'Reply quality' : 'Booking rate')),
+                    React.createElement('span', null, item.kind === 'runway' ? 'Lead runway' : item.kind === 'stale' ? 'Idle list' : 'Reply quality')),
                   React.createElement('div', { className: 'label' },
                     React.createElement('span', { className: 'camp' }, item.campaign),
                     React.createElement('span', null, ' — '),

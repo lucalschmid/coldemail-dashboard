@@ -45,13 +45,11 @@ window.CSD.derive = function derive(campaign, thresholds) {
   const sends = campaign.sends7d || 0;
   const replies = campaign.replies7d || 0;
   const pos = campaign.posReplies7d || 0;
-  const bookings = campaign.bookings7d || 0;
   const dailyRate = sends / 7;
   const runwayDays = dailyRate > 0 ? campaign.leadsLeft / dailyRate : (campaign.leadsLeft > 0 ? Infinity : 0);
 
   // PRR = pos / replies (Instantly definition: of all who replied, how many were positive)
   const prr = replies > 0 ? pos / replies : null;
-  const abr = sends > 0 ? bookings / sends : null;
 
   // Days since last send
   let daysSinceLastSend = null;
@@ -70,12 +68,6 @@ window.CSD.derive = function derive(campaign, thresholds) {
     else if (prr < thresholds.prrWarning) prrSev = 1;
   }
 
-  let abrSev = 0;
-  if (abr !== null && sends >= 500) {
-    if (abr < thresholds.abrCritical) abrSev = 2;
-    else if (abr < thresholds.abrWarning) abrSev = 1;
-  }
-
   let runwaySev = 0;
   if (campaign.status === 'Active') {
     if (campaign.leadsLeft === 0 || runwayDays < thresholds.runwayCritical) runwaySev = 2;
@@ -92,16 +84,14 @@ window.CSD.derive = function derive(campaign, thresholds) {
     canRerun = daysSinceLastSend >= 7; // safe to rerun after a week of cooldown
   }
 
-  const overall = Math.max(prrSev, abrSev, runwaySev, staleSev);
+  const overall = Math.max(prrSev, runwaySev, staleSev);
 
   return {
     ...campaign,
     dailyRate,
     runwayDays,
     prr,
-    abr,
     prrSev,
-    abrSev,
     runwaySev,
     staleSev,
     daysSinceLastSend,
@@ -113,8 +103,6 @@ window.CSD.derive = function derive(campaign, thresholds) {
 window.CSD.DEFAULT_THRESHOLDS = {
   prrWarning: 0.05,    // 5% of replies — pos replies / total replies
   prrCritical: 0.02,   // 2%
-  abrWarning: 0.002,    // 0.20%
-  abrCritical: 0.001,   // 0.10%
   runwayWarning: 14,    // days
   runwayCritical: 7,    // days
   staleWarning: 14,     // idle days before warning
@@ -123,7 +111,6 @@ window.CSD.DEFAULT_THRESHOLDS = {
 
 window.CSD.THRESHOLD_DOCS = {
   prr: 'Positive Reply Rate. Of all replies, how many were positive (opportunities). Benchmark: 5%+. Below 2% means replies aren\'t converting — check copy quality or targeting.',
-  abr: 'Appointment Booking Rate. 0.20% on sends is healthy for high-ticket B2B. Below 0.10% means replies aren\'t converting to calls.',
   runway: 'Days of leads remaining at the current 7-day send rate. Refill the list before it hits zero or inboxes sit idle.',
 };
 
@@ -175,17 +162,6 @@ window.CSD.buildActions = function buildActions(derived, thresholds) {
         detail: `Below benchmark of ${(thresholds.prrWarning * 100).toFixed(2)}%.`,
       });
     }
-    if (c.abrSev === 2) {
-      items.push({
-        id: c.id + ':abr',
-        sev: 2,
-        client: c.client,
-        campaign: c.campaign,
-        kind: 'abr',
-        label: `Booking rate ${(c.abr * 100).toFixed(2)}%`,
-        detail: `Replies aren't converting to calls.`,
-      });
-    }
     if (c.staleSev === 2) {
       items.push({
         id: c.id + ':stale',
@@ -208,8 +184,8 @@ window.CSD.buildActions = function buildActions(derived, thresholds) {
       });
     }
   }
-  // Sort: sev desc, then kind priority (runway > stale > prr > abr)
-  const kindOrder = { runway: 0, stale: 1, prr: 2, abr: 3 };
+  // Sort: sev desc, then kind priority (runway > stale > prr)
+  const kindOrder = { runway: 0, stale: 1, prr: 2 };
   items.sort((a, b) => b.sev - a.sev || kindOrder[a.kind] - kindOrder[b.kind]);
   return items;
 };
@@ -219,16 +195,14 @@ window.CSD.aggregate = function aggregate(derived) {
   const sends = derived.reduce((s, c) => s + (c.sends7d || 0), 0);
   const replies = derived.reduce((s, c) => s + (c.replies7d || 0), 0);
   const pos = derived.reduce((s, c) => s + (c.posReplies7d || 0), 0);
-  const bookings = derived.reduce((s, c) => s + (c.bookings7d || 0), 0);
   const leadsLeft = derived.reduce((s, c) => s + (c.leadsLeft || 0), 0);
   const totalLeads = derived.reduce((s, c) => s + (c.totalLeads || 0), 0);
   const contacted = derived.reduce((s, c) => s + (c.contacted || 0), 0);
   const active = derived.filter((c) => c.status === 'Active').length;
   const flagged = derived.filter((c) => c.overall === 2).length;
   return {
-    sends, replies, pos, bookings, leadsLeft, totalLeads, contacted,
+    sends, replies, pos, leadsLeft, totalLeads, contacted,
     prr: replies > 0 ? pos / replies : null,
-    abr: sends > 0 ? bookings / sends : null,
     replyRate: sends > 0 ? replies / sends : null,
     active,
     flagged,
@@ -248,6 +222,13 @@ window.CSD.sumSparklines = function sumSparklines(derived) {
 };
 
 // Group derived campaigns by client + compute group totals.
+// Inside each group, campaigns are ordered: Active → Paused → Draft → Completed,
+// then by 7-day sends desc as a tiebreaker.
+const STATUS_ORDER = { Active: 0, Paused: 1, Draft: 2, Completed: 3 };
+function statusRank(status) {
+  const r = STATUS_ORDER[status];
+  return r === undefined ? 99 : r;
+}
 window.CSD.groupByClient = function groupByClient(derived) {
   const map = {};
   for (const c of derived) {
@@ -255,10 +236,13 @@ window.CSD.groupByClient = function groupByClient(derived) {
     map[c.client].campaigns.push(c);
   }
   return Object.values(map).map((g) => {
+    g.campaigns.sort((a, b) =>
+      statusRank(a.status) - statusRank(b.status) ||
+      (b.sends7d || 0) - (a.sends7d || 0)
+    );
     const sends = g.campaigns.reduce((s, c) => s + (c.sends7d || 0), 0);
     const replies = g.campaigns.reduce((s, c) => s + (c.replies7d || 0), 0);
     const pos = g.campaigns.reduce((s, c) => s + (c.posReplies7d || 0), 0);
-    const bookings = g.campaigns.reduce((s, c) => s + (c.bookings7d || 0), 0);
     const leadsLeft = g.campaigns.reduce((s, c) => s + (c.leadsLeft || 0), 0);
     const totalLeads = g.campaigns.reduce((s, c) => s + (c.totalLeads || 0), 0);
     const active = g.campaigns.filter((c) => c.status === 'Active').length;
@@ -278,7 +262,7 @@ window.CSD.groupByClient = function groupByClient(derived) {
     }
     return {
       ...g,
-      sends, replies, pos, bookings, leadsLeft, totalLeads,
+      sends, replies, pos, leadsLeft, totalLeads,
       active,
       flagged,
       warned,

@@ -5,7 +5,6 @@ const fmtA = window.CSD.format;
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "density": "comfortable",
-  "showBookings": false,
   "groupByClient": true,
   "prrWarning": 0.0035,
   "prrCritical": 0.0025,
@@ -232,8 +231,6 @@ function App() {
   const thresholds = useMemo(() => ({
     prrWarning: Number(tweaks.prrWarning),
     prrCritical: Number(tweaks.prrCritical),
-    abrWarning: 0.002,
-    abrCritical: 0.001,
     runwayWarning: Number(tweaks.runwayWarning),
     runwayCritical: Number(tweaks.runwayCritical),
   }), [tweaks.prrWarning, tweaks.prrCritical, tweaks.runwayWarning, tweaks.runwayCritical]);
@@ -252,7 +249,7 @@ function App() {
       .map(l => window.CSD.derive({
         id: l.id, client: clientNames[l.client] || l.client,
         campaign: l.name, status: 'Paused',
-        sends7d: 0, replies7d: 0, posReplies7d: 0, bookings7d: 0,
+        sends7d: 0, replies7d: 0, posReplies7d: 0,
         totalLeads: l.totalLeads, contacted: 0, leadsLeft: l.totalLeads,
         bounced: 0, lastSendDate: null, sparkline: [], isCustom: true,
       }, thresholds));
@@ -269,7 +266,7 @@ function App() {
     if (!existing.has(PINNED)) {
       // Pull in any campaigns that belong to it even if the "client" was deleted
       const pinnedGroup = window.CSD.groupByClient(derived).find(g => g.client === PINNED);
-      groups.unshift(pinnedGroup || { client: PINNED, campaigns: [], sends: 0, replies: 0, pos: 0, bookings: 0,
+      groups.unshift(pinnedGroup || { client: PINNED, campaigns: [], sends: 0, replies: 0, pos: 0,
         leadsLeft: 0, totalLeads: 0, active: 0, flagged: 0, warned: 0,
         stale: 0, canRerun: 0, overall: 0, dailyRate: 0,
         runwayDays: Infinity, sparkline: [], replyRate: null, prr: null });
@@ -278,7 +275,7 @@ function App() {
     customClients.forEach(c => {
       const name = clientNames[c.name] || c.name;
       if (!existing.has(name) && !delClientSet.has(name)) groups.push({
-        client: name, campaigns: [], sends: 0, replies: 0, pos: 0, bookings: 0,
+        client: name, campaigns: [], sends: 0, replies: 0, pos: 0,
         leadsLeft: 0, totalLeads: 0, active: 0, flagged: 0, warned: 0,
         stale: 0, canRerun: 0, overall: 0, dailyRate: 0,
         runwayDays: Infinity, sparkline: [], replyRate: null, prr: null,
@@ -455,12 +452,6 @@ function App() {
       React.createElement('span', null, 'Compound Scaling')),
     React.createElement('div', { className: 'csd-sidebar-section' }, 'Workspace'),
     React.createElement('nav', { className: 'csd-nav' },
-      navItem('overview', 'Overview',
-        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          React.createElement('rect', { x: 3, y: 3, width: 7, height: 9 }),
-          React.createElement('rect', { x: 14, y: 3, width: 7, height: 5 }),
-          React.createElement('rect', { x: 14, y: 12, width: 7, height: 9 }),
-          React.createElement('rect', { x: 3, y: 16, width: 7, height: 5 }))),
       navItem('campaigns', 'Campaigns',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('path', { d: 'M4 4h16v16H4z' }),
@@ -482,12 +473,6 @@ function App() {
       navItem('leadlists', 'Lead Lists',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('path', { d: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' }))),
-      navItem('bookings', 'Bookings',
-        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          React.createElement('rect', { x: 3, y: 4, width: 18, height: 18, rx: 2 }),
-          React.createElement('line', { x1: 16, y1: 2, x2: 16, y2: 6 }),
-          React.createElement('line', { x1: 8, y1: 2, x2: 8, y2: 6 }),
-          React.createElement('line', { x1: 3, y1: 10, x2: 21, y2: 10 }))),
       navItem('reports', 'Reports',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('path', { d: 'M21.21 15.89A10 10 0 1 1 8 2.83' }),
@@ -501,7 +486,7 @@ function App() {
   );
 
   // ---------- Topbar ----------
-  const titleByNav = { overview: 'Overview', campaigns: 'Campaigns', clients: 'Clients', leadlists: 'Lead Lists', bookings: 'Bookings', reports: 'Reports', analytics: 'Inbox Analytics', settings: 'Settings' };
+  const titleByNav = { campaigns: 'Campaigns', clients: 'Clients', leadlists: 'Lead Lists', reports: 'Reports', analytics: 'Inbox Analytics', settings: 'Settings' };
   const topbar = React.createElement('div', { className: 'csd-topbar' },
     React.createElement('div', { className: 'csd-topbar-title' },
       React.createElement('h1', null, titleByNav[activeNav] || 'Dashboard'),
@@ -1420,9 +1405,7 @@ function App() {
 
   let viewBody;
   if (activeNav === 'clients') viewBody = clientsView;
-  else if (activeNav === 'overview') viewBody = React.createElement(React.Fragment, null, statsRow, banner, emptyPage('Overview coming soon', 'Aggregate trends across the whole portfolio. For now, the Campaigns tab is your command center.'));
   else if (activeNav === 'leadlists') viewBody = leadListsView;
-  else if (activeNav === 'bookings') viewBody = emptyPage('Bookings', 'Once Calendly is wired in, this view will show every call booked across all campaigns with attribution back to the source sequence.');
   else if (activeNav === 'reports') viewBody = emptyPage('Reports', 'Weekly and monthly snapshots, exportable as CSV or PDF.');
   else if (activeNav === 'analytics') viewBody = inboxAnalyticsView;
   else if (activeNav === 'settings') viewBody = emptyPage('Settings', 'Thresholds, integrations, team access. Use the Tweaks toggle for the live design knobs.');
@@ -1548,11 +1531,6 @@ function App() {
           label: 'Group by client',
           value: tweaks.groupByClient,
           onChange: (v) => setTweak('groupByClient', v),
-        }),
-        React.createElement(TweakToggle, {
-          label: 'Show bookings & ABR',
-          value: tweaks.showBookings,
-          onChange: (v) => setTweak('showBookings', v),
         })),
       React.createElement(TweakSection, { title: 'Thresholds' },
         React.createElement(TweakSlider, {

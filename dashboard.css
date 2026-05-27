@@ -575,6 +575,23 @@ html, body { margin: 0; padding: 0; }
   gap: 6px;
   flex-wrap: wrap;
 }
+.csd-tag-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.csd-tag-chip {
+  display: inline-block;
+  font-size: 10.5px;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--d-bg-soft);
+  color: var(--d-fg-2);
+  border: 1px solid var(--d-rule);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .csd-camprow.is-idle .name-cell .n { color: var(--d-fg-2); }
 .csd-camprow.can-rerun {
   background: linear-gradient(90deg, rgba(214,184,99,0.06) 0%, transparent 60%);
@@ -591,7 +608,7 @@ html, body { margin: 0; padding: 0; }
 /* Column header strip inside open group */
 .csd-colstrip {
   display: grid;
-  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 1fr 130px;
+  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 130px;
   align-items: center;
   gap: 14px;
   padding: 7px 18px;
@@ -615,7 +632,7 @@ html, body { margin: 0; padding: 0; }
 /* Campaign rows inside group */
 .csd-camprow {
   display: grid;
-  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 1fr 130px;
+  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 130px;
   align-items: center;
   gap: 14px;
   padding: 12px 18px;
