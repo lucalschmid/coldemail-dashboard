@@ -270,8 +270,19 @@ function buildDashboardData() {
     const sumRaw = safeJson(sumRes);
     const s      = Array.isArray(sumRaw) ? (sumRaw[0] || {}) : (sumRaw || {});
 
-    const totalLeads = num(s.leads_count);
-    const contacted  = num(s.contacted_count);
+    // All-time totals — needed so leadsLeft = total_leads − total_contacted.
+    // The 7-day window above only tells us recent activity; subtracting it
+    // from total_leads would massively over-report what's left in the list.
+    const ALL_TIME_START = '2020-01-01';
+    const allUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id + '&start_date=' + ALL_TIME_START + '&end_date=' + end;
+    const allRes = UrlFetchApp.fetch(allUrl, opts);
+    const allRaw = safeJson(allRes);
+    const allSum = Array.isArray(allRaw) ? (allRaw[0] || {}) : (allRaw || {});
+
+    // leads_count is a snapshot of the campaign's lead list size (not range-
+    // bound). contacted_count is range-bound, so we must use the all-time call.
+    const totalLeads     = num(allSum.leads_count || s.leads_count);
+    const totalContacted = num(allSum.contacted_count);
 
     // Resolve which inbox tag(s) this campaign uses by intersecting its
     // sender accounts (Instantly's email_list) with our email→tag map.
@@ -292,8 +303,8 @@ function buildDashboardData() {
       replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),
       posReplies7d: num(s.total_opportunities),
       totalLeads,
-      contacted,
-      leadsLeft:    Math.max(0, totalLeads - contacted),
+      contacted:    totalContacted,
+      leadsLeft:    Math.max(0, totalLeads - totalContacted),
       bounced:      num(s.bounced_count),
       lastSendDate,
       sparkline,
