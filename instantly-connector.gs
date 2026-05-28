@@ -299,7 +299,12 @@ function buildDashboardData() {
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      sends7d:      num(s.contacted_count),
+      // sends7d  = total messages dispatched (incl. follow-ups) → matches what
+      //            the Instantly UI shows in the "Sent" column.
+      // contacted7d = unique leads contacted in the 7-day window → the right
+      //            denominator for reply rate and runway dailyRate.
+      sends7d:      num(s.emails_sent_count),
+      contacted7d:  num(s.contacted_count),
       replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),
       posReplies7d: num(s.total_opportunities),
       totalLeads,

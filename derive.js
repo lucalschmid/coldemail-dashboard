@@ -42,11 +42,16 @@ window.CSD.format = {
 };
 
 window.CSD.derive = function derive(campaign, thresholds) {
-  const sends = campaign.sends7d || 0;
+  const sends = campaign.sends7d || 0;            // total messages (incl. follow-ups) — what the UI shows
+  // contacted7d is unique leads contacted; fall back to sends7d for legacy/mock
+  // payloads that don't carry the field yet so existing demos still work.
+  const contacted = (campaign.contacted7d != null ? campaign.contacted7d : campaign.sends7d) || 0;
   const replies = campaign.replies7d || 0;
   const pos = campaign.posReplies7d || 0;
-  const dailyRate = sends / 7;
-  const runwayDays = dailyRate > 0 ? campaign.leadsLeft / dailyRate : (campaign.leadsLeft > 0 ? Infinity : 0);
+  const dailyRate = sends / 7;                    // displayed "X/day"
+  const contactedRate = contacted / 7;            // runway divisor — only unique leads consume the runway
+  const runwayDays = contactedRate > 0 ? campaign.leadsLeft / contactedRate : (campaign.leadsLeft > 0 ? Infinity : 0);
+  const replyRate = contacted > 0 ? replies / contacted : null;  // cold-email standard: replies per unique lead
 
   // PRR = pos / replies (Instantly definition: of all who replied, how many were positive)
   const prr = replies > 0 ? pos / replies : null;
@@ -88,9 +93,11 @@ window.CSD.derive = function derive(campaign, thresholds) {
 
   return {
     ...campaign,
+    contacted7d: contacted,
     dailyRate,
     runwayDays,
     prr,
+    replyRate,
     prrSev,
     runwaySev,
     staleSev,
@@ -192,18 +199,21 @@ window.CSD.buildActions = function buildActions(derived, thresholds) {
 
 // Aggregate: agency-wide totals from a list of derived campaigns
 window.CSD.aggregate = function aggregate(derived) {
-  const sends = derived.reduce((s, c) => s + (c.sends7d || 0), 0);
+  const sends = derived.reduce((s, c) => s + (c.sends7d || 0), 0);            // total messages
+  const contacted7d = derived.reduce((s, c) => s + (c.contacted7d || 0), 0);  // unique leads in last 7d
   const replies = derived.reduce((s, c) => s + (c.replies7d || 0), 0);
   const pos = derived.reduce((s, c) => s + (c.posReplies7d || 0), 0);
   const leadsLeft = derived.reduce((s, c) => s + (c.leadsLeft || 0), 0);
   const totalLeads = derived.reduce((s, c) => s + (c.totalLeads || 0), 0);
-  const contacted = derived.reduce((s, c) => s + (c.contacted || 0), 0);
+  const contacted = derived.reduce((s, c) => s + (c.contacted || 0), 0);      // all-time unique contacted
   const active = derived.filter((c) => c.status === 'Active').length;
   const flagged = derived.filter((c) => c.overall === 2).length;
   return {
-    sends, replies, pos, leadsLeft, totalLeads, contacted,
+    sends, contacted7d, replies, pos, leadsLeft, totalLeads, contacted,
     prr: replies > 0 ? pos / replies : null,
-    replyRate: sends > 0 ? replies / sends : null,
+    // Reply rate uses unique-leads denominator so multi-step sequences don't
+    // mechanically deflate the number.
+    replyRate: contacted7d > 0 ? replies / contacted7d : null,
     active,
     flagged,
     total: derived.length,
@@ -241,6 +251,7 @@ window.CSD.groupByClient = function groupByClient(derived) {
       (b.sends7d || 0) - (a.sends7d || 0)
     );
     const sends = g.campaigns.reduce((s, c) => s + (c.sends7d || 0), 0);
+    const contacted7d = g.campaigns.reduce((s, c) => s + (c.contacted7d || 0), 0);
     const replies = g.campaigns.reduce((s, c) => s + (c.replies7d || 0), 0);
     const pos = g.campaigns.reduce((s, c) => s + (c.posReplies7d || 0), 0);
     const leadsLeft = g.campaigns.reduce((s, c) => s + (c.leadsLeft || 0), 0);
@@ -251,8 +262,9 @@ window.CSD.groupByClient = function groupByClient(derived) {
     const stale = g.campaigns.filter((c) => c.staleSev > 0).length;
     const canRerun = g.campaigns.filter((c) => c.canRerun).length;
     const overall = Math.max(...g.campaigns.map((c) => c.overall || 0));
-    const dailyRate = sends / 7;
-    const runwayDays = dailyRate > 0 ? leadsLeft / dailyRate : (leadsLeft > 0 ? Infinity : 0);
+    const dailyRate = sends / 7;                  // display
+    const contactedRate = contacted7d / 7;        // runway divisor
+    const runwayDays = contactedRate > 0 ? leadsLeft / contactedRate : (leadsLeft > 0 ? Infinity : 0);
     // Sum sparklines for client-level daily series
     const sparkLen = Math.max(0, ...g.campaigns.map((c) => (c.sparkline || []).length));
     const sparkline = new Array(sparkLen).fill(0);
@@ -262,7 +274,7 @@ window.CSD.groupByClient = function groupByClient(derived) {
     }
     return {
       ...g,
-      sends, replies, pos, leadsLeft, totalLeads,
+      sends, contacted7d, replies, pos, leadsLeft, totalLeads,
       active,
       flagged,
       warned,
@@ -272,7 +284,7 @@ window.CSD.groupByClient = function groupByClient(derived) {
       dailyRate,
       runwayDays,
       sparkline,
-      replyRate: sends > 0 ? replies / sends : null,
+      replyRate: contacted7d > 0 ? replies / contacted7d : null,
       prr: replies > 0 ? pos / replies : null,
     };
   }).sort((a, b) => b.sends - a.sends);

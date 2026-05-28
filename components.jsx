@@ -138,7 +138,12 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags 
 
 // ---------- Campaign row ----------
 function CampaignRow({ campaign: c, onDelete, onEditTags }) {
-  const replyRate = c.sends7d > 0 ? (c.replies7d / c.sends7d) : null;
+  // replyRate is computed in derive() against unique leads contacted (cold-email
+  // standard) so multi-step sequences don't deflate the metric. Fall back to the
+  // legacy ratio for mock/legacy payloads that don't carry it yet.
+  const replyRate = c.replyRate != null
+    ? c.replyRate
+    : (c.sends7d > 0 ? c.replies7d / c.sends7d : null);
   const tags = c.inboxTags || [];
   return React.createElement('div', { className: 'csd-camprow' + (c.status !== 'Active' ? ' is-paused' : '') + (c.staleSev > 0 ? ' is-idle' : '') },
     React.createElement('span', { className: 'gutter' },
