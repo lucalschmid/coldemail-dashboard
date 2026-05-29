@@ -90,6 +90,10 @@ function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activeNav, setActiveNav] = useState('campaigns');
   const [clientFilter, setClientFilter] = useState('all');
+  // 'all' | 'active' — hides paused / draft / completed when set to 'active'.
+  const [statusFilter, setStatusFilter] = useState(() => {
+    try { return localStorage.getItem('csd:status-filter:v1') || 'all'; } catch (e) { return 'all'; }
+  });
   const [listNames, setListNames] = useState(() => {
     try { return JSON.parse(localStorage.getItem('csd:list-names:v1') || '{}'); } catch (e) { return {}; }
   });
@@ -318,9 +322,11 @@ function App() {
   }, [derived, customClients, clientNames, deletedClientNames]);
 
   const filteredByClient = useMemo(() => {
-    if (clientFilter === 'all') return derived;
-    return derived.filter((c) => c.client === clientFilter);
-  }, [derived, clientFilter]);
+    let arr = derived;
+    if (clientFilter !== 'all') arr = arr.filter((c) => c.client === clientFilter);
+    if (statusFilter === 'active') arr = arr.filter((c) => c.status === 'Active');
+    return arr;
+  }, [derived, clientFilter, statusFilter]);
 
   const totals = useMemo(() => window.CSD.aggregate(filteredByClient), [filteredByClient]);
   const groups = useMemo(() => window.CSD.groupByClient(filteredByClient), [filteredByClient]);
@@ -822,6 +828,22 @@ function App() {
           className: !tweaks.groupByClient ? 'active' : '',
           onClick: () => setTweak('groupByClient', false),
         }, 'Flat')),
+      React.createElement('span', { className: 'label' }, 'Status'),
+      React.createElement('div', { className: 'csd-segment' },
+        React.createElement('button', {
+          className: statusFilter === 'all' ? 'active' : '',
+          onClick: () => {
+            setStatusFilter('all');
+            try { localStorage.setItem('csd:status-filter:v1', 'all'); } catch (e) {}
+          },
+        }, 'All'),
+        React.createElement('button', {
+          className: statusFilter === 'active' ? 'active' : '',
+          onClick: () => {
+            setStatusFilter('active');
+            try { localStorage.setItem('csd:status-filter:v1', 'active'); } catch (e) {}
+          },
+        }, 'Active only')),
       React.createElement('button', {
         className: 'csd-ghost-btn',
         onClick: () => {
