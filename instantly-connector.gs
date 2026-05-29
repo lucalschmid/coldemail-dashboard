@@ -258,12 +258,12 @@ function buildDashboardData() {
     const sparkline    = buildSparkline(daily, today, LOOKBACK_SPARKLINE);
     const lastSendDate = getLastSendDate(daily);
 
-    // Anchor 7-day stats window to last active send date.
-    // Instantly "last 7 days" ends at the last day the campaign actively sent —
-    // so paused/completed campaigns show stats for their last active period, not today.
-    const anchor   = lastSendDate ? new Date(lastSendDate + 'T12:00:00') : today;
-    const sumEnd   = fmtDate(daysAgo(anchor, -1)); // exclusive end = day after last send
-    const sumStart = fmtDate(daysAgo(anchor, 6));  // 7-day window: 6 days before last send
+    // Calendar 7-day window anchored to today. Instantly's "Last 7 days" UI
+    // panel is a calendar window, NOT a "last 7 active days" window — so a
+    // paused/completed campaign with no recent activity reports 0 here, and an
+    // active campaign matches what the user sees in Instantly's analytics tab.
+    const sumStart = fmtDate(daysAgo(today, 6));   // [today-6, today] = 7 calendar days
+    const sumEnd   = fmtDate(daysAgo(today, -1));  // exclusive end = tomorrow
 
     const sumUrl = BASE_V2 + '/campaigns/analytics?id=' + c.id + '&start_date=' + sumStart + '&end_date=' + sumEnd;
     const sumRes = UrlFetchApp.fetch(sumUrl, opts);
@@ -284,15 +284,15 @@ function buildDashboardData() {
     const totalLeads     = num(allSum.leads_count || s.leads_count);
     const totalContacted = num(allSum.contacted_count);
 
-    // Count days within the 7-day window where the campaign actually sent
-    // anything. We divide sends7d by activeDays7d (not 7) so a brand-new
-    // campaign that's only run for 2 days reports its true per-active-day
-    // pace instead of a diluted calendar average.
-    var anchorStr = fmtDate(anchor);
+    // Count days within the calendar 7-day window where the campaign actually
+    // sent anything. We divide sends7d by activeDays7d (not 7) so a brand-new
+    // campaign that's only run for 2 days reports its true per-active-day pace
+    // instead of a diluted calendar average.
+    var todayStr = fmtDate(today);
     var activeDays7d = 0;
     daily.forEach(function(d) {
       if (!d.date) return;
-      if (d.date < sumStart || d.date > anchorStr) return;
+      if (d.date < sumStart || d.date > todayStr) return;
       if (num(d.contacted) > 0 || num(d.new_leads_contacted) > 0) activeDays7d++;
     });
 
@@ -311,14 +311,20 @@ function buildDashboardData() {
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      // sends7d  = total messages dispatched (incl. follow-ups) → matches what
-      //            the Instantly UI shows in the "Sent" column.
-      // contacted7d = unique leads contacted in the 7-day window → the right
-      //            denominator for reply rate and runway dailyRate.
+      // sends7d  = total messages dispatched (incl. follow-ups) → matches
+      //            Instantly's "Sent" line on the analytics chart.
+      // contacted7d = leads whose FIRST message in this campaign landed in the
+      //            window. Matches Instantly's "Sequence started" — the panel
+      //            it uses as the reply-rate denominator. NOT contacted_count
+      //            (which counts any lead with activity, including follow-ups
+      //            to leads first contacted before the window).
+      // replies7d = real replies only (reply_count_unique). Instantly's "Reply
+      //            rate" panel excludes auto-replies; mirror that so the rate
+      //            and absolute count both match.
       sends7d:      num(s.emails_sent_count),
-      contacted7d:  num(s.contacted_count),
+      contacted7d:  num(s.new_leads_contacted_count),
       activeDays7d: activeDays7d,
-      replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),
+      replies7d:    num(s.reply_count_unique),
       posReplies7d: num(s.total_opportunities),
       totalLeads,
       contacted:    totalContacted,
