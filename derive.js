@@ -53,8 +53,16 @@ window.CSD.derive = function derive(campaign, thresholds) {
   // a diluted 27/day calendar average. Mock/legacy payloads lack the field, so
   // fall back to 7 in that case.
   const activeDays = campaign.activeDays7d != null ? campaign.activeDays7d : 7;
-  const dailyRate = activeDays > 0 ? sends / activeDays : 0;
-  const contactedRate = activeDays > 0 ? contacted / activeDays : 0;
+  const actualDailyRate = activeDays > 0 ? sends / activeDays : 0;
+  const actualContactedRate = activeDays > 0 ? contacted / activeDays : 0;
+  // If the user set a configured daily target for this campaign, use that for
+  // BOTH the displayed "X/day" and the runway divisor — matches their mental
+  // model: "campaign set to 100/day, 500 leads left → 5 days of runway".
+  // Downtime makes runway optimistic in that case, which the user accepts.
+  const dailyTargetOverride = campaign.dailyTargetOverride;
+  const hasTarget = dailyTargetOverride != null && dailyTargetOverride > 0;
+  const dailyRate = hasTarget ? dailyTargetOverride : actualDailyRate;
+  const contactedRate = hasTarget ? dailyTargetOverride : actualContactedRate;
   const runwayDays = contactedRate > 0 ? campaign.leadsLeft / contactedRate : (campaign.leadsLeft > 0 ? Infinity : 0);
   const replyRate = contacted > 0 ? replies / contacted : null;  // cold-email standard: replies per unique lead
 
@@ -100,6 +108,8 @@ window.CSD.derive = function derive(campaign, thresholds) {
     ...campaign,
     contacted7d: contacted,
     dailyRate,
+    actualDailyRate,
+    dailyRateIsTarget: hasTarget,
     runwayDays,
     prr,
     replyRate,

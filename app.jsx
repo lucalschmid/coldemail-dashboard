@@ -149,6 +149,17 @@ function App() {
   const [editingTagsFor, setEditingTagsFor] = useState(null); // campaign object or null
   const [tagEditorSelection, setTagEditorSelection] = useState([]);
 
+  // Manual campaign → configured daily target (messages / day) override.
+  // When set, the dashboard treats this as the campaign's configured Instantly
+  // sending rate and uses it for both the "X/day" display and runway math.
+  // When unset, derive.js falls back to actual sends ÷ active days.
+  // Stored as { [campaignId]: number }.
+  const [campaignDailyTargetOverrides, setCampaignDailyTargetOverrides] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('csd:campaign-daily-target:v1') || '{}'); } catch (e) { return {}; }
+  });
+  const [editingDailyTargetFor, setEditingDailyTargetFor] = useState(null);
+  const [dailyTargetInput, setDailyTargetInput] = useState('');
+
   // Add-list modal
   const [addListModal, setAddListModal] = useState(null); // { categoryId } | null
   const [addListForm, setAddListForm] = useState({ name: '', status: 'Active', lastActive: '', leadCount: '', runningText: '', csvData: null, csvName: '' });
@@ -251,9 +262,13 @@ function App() {
     const base = data.campaigns
       .filter(c => !delSet.has(c.id))
       .map((c) => {
+        // Daily target override must reach derive() so dailyRate / runway are
+        // computed against it instead of the actual 7-day pace.
+        const dailyTargetOverride = campaignDailyTargetOverrides[c.id];
         const d = window.CSD.derive({
           ...c,
           client: campaignClientOverrides[c.id] || clientNames[c.client] || c.client,
+          dailyTargetOverride: dailyTargetOverride,
         }, thresholds);
         // Manual tag override wins over GAS auto-detection. An override of [] is
         // a deliberate "no tags assigned" and must still beat the auto value.
@@ -272,7 +287,7 @@ function App() {
         bounced: 0, lastSendDate: null, sparkline: [], isCustom: true,
       }, thresholds));
     return [...base, ...custom];
-  }, [data, thresholds, clientNames, customLists, deletedCampaignIds, campaignClientOverrides, campaignTagOverrides]);
+  }, [data, thresholds, clientNames, customLists, deletedCampaignIds, campaignClientOverrides, campaignTagOverrides, campaignDailyTargetOverrides]);
 
   const actions = useMemo(() => window.CSD.buildActions(derived, thresholds), [derived, thresholds]);
   const allGroups = useMemo(() => {
@@ -829,15 +844,20 @@ function App() {
               onToggle: () => toggleGroup(g.client),
               dayLabels: labels,
               onDelete: deleteCampaign,
-              // Lazy wrapper: openEditTags is declared further down. Passing it
-              // directly captures undefined at this point; wrapping defers the
-              // lookup to click time.
+              // Lazy wrappers: openEditTags / openEditDailyTarget are declared
+              // further down. Passing them directly captures undefined here;
+              // wrapping defers the lookup to click time.
               onEditTags: (c) => openEditTags(c),
+              onEditDailyTarget: (c) => openEditDailyTarget(c),
             }))
         : React.createElement('div', { className: 'csd-clientgroup open' },
             React.createElement('div', { className: 'csd-clientgroup-body' },
               filteredGroups.flatMap(g => g.campaigns).map((c) =>
-                React.createElement(CampaignRow, { key: c.id, campaign: c, onDelete: deleteCampaign, onEditTags: () => openEditTags(c) }))))));
+                React.createElement(CampaignRow, {
+                  key: c.id, campaign: c, onDelete: deleteCampaign,
+                  onEditTags: () => openEditTags(c),
+                  onEditDailyTarget: () => openEditDailyTarget(c),
+                }))))));
 
   // ---------- Delete handlers ----------
   const deleteCampaign = (id) => {
@@ -921,6 +941,28 @@ function App() {
     setCampaignTagOverrides(next);
     try { localStorage.setItem('csd:campaign-tags:v1', JSON.stringify(next)); } catch (e) {}
     setEditingTagsFor(null);
+  };
+
+  // ---------- Campaign → configured daily target ----------
+  const openEditDailyTarget = (campaign) => {
+    const cur = campaignDailyTargetOverrides[campaign.id];
+    setDailyTargetInput(cur != null ? String(cur) : '');
+    setEditingDailyTargetFor(campaign);
+  };
+  const saveCampaignDailyTarget = (campaignId, raw) => {
+    const n = Number(String(raw).trim());
+    if (!isFinite(n) || n <= 0) { resetCampaignDailyTarget(campaignId); return; }
+    const next = { ...campaignDailyTargetOverrides, [campaignId]: Math.round(n) };
+    setCampaignDailyTargetOverrides(next);
+    try { localStorage.setItem('csd:campaign-daily-target:v1', JSON.stringify(next)); } catch (e) {}
+    setEditingDailyTargetFor(null);
+  };
+  const resetCampaignDailyTarget = (campaignId) => {
+    const next = { ...campaignDailyTargetOverrides };
+    delete next[campaignId];
+    setCampaignDailyTargetOverrides(next);
+    try { localStorage.setItem('csd:campaign-daily-target:v1', JSON.stringify(next)); } catch (e) {}
+    setEditingDailyTargetFor(null);
   };
 
   // ---------- Manual lead list handlers ----------
@@ -1540,6 +1582,54 @@ function App() {
       onClearResolved: clearResolved,
       onJump: onJumpToCampaign,
     }),
+    editingDailyTargetFor && React.createElement('div', {
+      className: 'csd-modal-overlay',
+      onClick: () => setEditingDailyTargetFor(null),
+    },
+      React.createElement('div', { className: 'csd-modal', onClick: e => e.stopPropagation() },
+        React.createElement('div', { className: 'csd-modal-header' },
+          React.createElement('h2', null, 'Daily send target'),
+          React.createElement('button', { className: 'csd-modal-close', onClick: () => setEditingDailyTargetFor(null) },
+            React.createElement('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' },
+              React.createElement('line', { x1: 18, y1: 6, x2: 6, y2: 18 }),
+              React.createElement('line', { x1: 6, y1: 6, x2: 18, y2: 18 })))),
+        React.createElement('div', { className: 'csd-modal-body' },
+          React.createElement('div', { className: 'csd-tageditor-sub' },
+            'Campaign: ', React.createElement('strong', null, editingDailyTargetFor.campaign)),
+          React.createElement('div', { className: 'csd-modal-field' },
+            React.createElement('label', null, 'Messages sent per day (as configured in Instantly)'),
+            React.createElement('input', {
+              className: 'csd-modal-input',
+              type: 'number',
+              min: 1,
+              step: 1,
+              placeholder: 'e.g. 400',
+              value: dailyTargetInput,
+              autoFocus: true,
+              onChange: e => setDailyTargetInput(e.target.value),
+              onKeyDown: e => {
+                if (e.key === 'Enter') saveCampaignDailyTarget(editingDailyTargetFor.id, dailyTargetInput);
+                if (e.key === 'Escape') setEditingDailyTargetFor(null);
+              },
+            })),
+          React.createElement('div', { className: 'csd-tageditor-sub', style: { fontSize: 11.5 } },
+            'Used for the "X/day" sublabel and runway calculation. Clear to fall back to the actual 7-day pace.'),
+          React.createElement('div', { className: 'csd-modal-actions' },
+            campaignDailyTargetOverrides[editingDailyTargetFor.id] != null && React.createElement('button', {
+              className: 'csd-ghost-btn',
+              onClick: () => resetCampaignDailyTarget(editingDailyTargetFor.id),
+              title: 'Remove the manual target and go back to actual-rate auto-detection',
+            }, 'Reset to actual rate'),
+            React.createElement('div', { className: 'csd-modal-actions-spacer' }),
+            React.createElement('button', {
+              className: 'csd-ghost-btn',
+              onClick: () => setEditingDailyTargetFor(null),
+            }, 'Cancel'),
+            React.createElement('button', {
+              className: 'csd-primary-btn',
+              onClick: () => saveCampaignDailyTarget(editingDailyTargetFor.id, dailyTargetInput),
+            }, 'Save'))))),
+
     editingTagsFor && React.createElement('div', {
       className: 'csd-modal-overlay',
       onClick: () => setEditingTagsFor(null),

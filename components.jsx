@@ -76,7 +76,7 @@ function DayChart({ data, labels }) {
 }
 
 // ---------- Client group ----------
-function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags }) {
+function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags, onEditDailyTarget }) {
   const flagPill = group.flagged > 0
     ? { cls: 'crit', txt: group.flagged + ' critical' }
     : group.warned > 0
@@ -131,13 +131,14 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags 
       group.campaigns.map((c) => React.createElement(CampaignRow, {
         key: c.id, campaign: c, onDelete,
         onEditTags: onEditTags ? () => onEditTags(c) : null,
+        onEditDailyTarget: onEditDailyTarget ? () => onEditDailyTarget(c) : null,
       }))
     )
   );
 }
 
 // ---------- Campaign row ----------
-function CampaignRow({ campaign: c, onDelete, onEditTags }) {
+function CampaignRow({ campaign: c, onDelete, onEditTags, onEditDailyTarget }) {
   // replyRate is computed in derive() against unique leads contacted (cold-email
   // standard) so multi-step sequences don't deflate the metric. Fall back to the
   // legacy ratio for mock/legacy payloads that don't carry it yet.
@@ -177,7 +178,15 @@ function CampaignRow({ campaign: c, onDelete, onEditTags }) {
             }, '+ assign tags')))),
     React.createElement('span', { className: 'stat-num' + (c.sends7d === 0 ? ' muted' : '') },
       fmt.num(c.sends7d),
-      React.createElement('span', { className: 'sublabel' }, c.dailyRate > 0 ? Math.round(c.dailyRate) + '/day' : 'no sends')),
+      React.createElement('span', {
+        className: 'sublabel' + (onEditDailyTarget ? ' sublabel-editable' : '') + (c.dailyRateIsTarget ? ' sublabel-target' : ''),
+        onClick: onEditDailyTarget ? (e) => { e.stopPropagation(); onEditDailyTarget(); } : undefined,
+        title: onEditDailyTarget
+          ? (c.dailyRateIsTarget
+              ? 'Manual target ' + Math.round(c.dailyRate) + '/day · click to edit · actual pace ' + Math.round(c.actualDailyRate || 0) + '/day'
+              : 'Click to set the configured Instantly daily target')
+          : undefined,
+      }, c.dailyRate > 0 ? Math.round(c.dailyRate) + '/day' : 'no sends')),
     React.createElement('span', { className: 'stat-num' + (replyRate === null ? ' muted' : '') },
       replyRate === null ? '—' : (replyRate * 100).toFixed(2) + '%',
       React.createElement('span', { className: 'sublabel' }, c.replies7d + ' replies')),
