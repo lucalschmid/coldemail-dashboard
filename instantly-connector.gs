@@ -284,6 +284,18 @@ function buildDashboardData() {
     const totalLeads     = num(allSum.leads_count || s.leads_count);
     const totalContacted = num(allSum.contacted_count);
 
+    // Count days within the 7-day window where the campaign actually sent
+    // anything. We divide sends7d by activeDays7d (not 7) so a brand-new
+    // campaign that's only run for 2 days reports its true per-active-day
+    // pace instead of a diluted calendar average.
+    var anchorStr = fmtDate(anchor);
+    var activeDays7d = 0;
+    daily.forEach(function(d) {
+      if (!d.date) return;
+      if (d.date < sumStart || d.date > anchorStr) return;
+      if (num(d.contacted) > 0 || num(d.new_leads_contacted) > 0) activeDays7d++;
+    });
+
     // Resolve which inbox tag(s) this campaign uses by intersecting its
     // sender accounts (Instantly's email_list) with our email→tag map.
     var senders = Array.isArray(c.email_list) ? c.email_list : [];
@@ -305,6 +317,7 @@ function buildDashboardData() {
       //            denominator for reply rate and runway dailyRate.
       sends7d:      num(s.emails_sent_count),
       contacted7d:  num(s.contacted_count),
+      activeDays7d: activeDays7d,
       replies7d:    num(s.reply_count_unique) + num(s.reply_count_automatic_unique),
       posReplies7d: num(s.total_opportunities),
       totalLeads,

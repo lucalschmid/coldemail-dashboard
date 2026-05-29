@@ -48,8 +48,13 @@ window.CSD.derive = function derive(campaign, thresholds) {
   const contacted = (campaign.contacted7d != null ? campaign.contacted7d : campaign.sends7d) || 0;
   const replies = campaign.replies7d || 0;
   const pos = campaign.posReplies7d || 0;
-  const dailyRate = sends / 7;                    // displayed "X/day"
-  const contactedRate = contacted / 7;            // runway divisor — only unique leads consume the runway
+  // Divide by active days (days the campaign actually sent), not 7. A campaign
+  // that ran for only 2 of the last 7 days at 96/day reports 96/day here, not
+  // a diluted 27/day calendar average. Mock/legacy payloads lack the field, so
+  // fall back to 7 in that case.
+  const activeDays = campaign.activeDays7d != null ? campaign.activeDays7d : 7;
+  const dailyRate = activeDays > 0 ? sends / activeDays : 0;
+  const contactedRate = activeDays > 0 ? contacted / activeDays : 0;
   const runwayDays = contactedRate > 0 ? campaign.leadsLeft / contactedRate : (campaign.leadsLeft > 0 ? Infinity : 0);
   const replyRate = contacted > 0 ? replies / contacted : null;  // cold-email standard: replies per unique lead
 
@@ -262,8 +267,12 @@ window.CSD.groupByClient = function groupByClient(derived) {
     const stale = g.campaigns.filter((c) => c.staleSev > 0).length;
     const canRerun = g.campaigns.filter((c) => c.canRerun).length;
     const overall = Math.max(...g.campaigns.map((c) => c.overall || 0));
-    const dailyRate = sends / 7;                  // display
-    const contactedRate = contacted7d / 7;        // runway divisor
+    // Group-level rate: sum each campaign's own per-active-day rate. This
+    // avoids penalising a freshly-started campaign just because its sibling
+    // has run for the full 7 days.
+    const dailyRate = g.campaigns.reduce((s, c) => s + (c.dailyRate || 0), 0);
+    const contactedRate = g.campaigns.reduce(
+      (s, c) => s + (c.activeDays7d > 0 ? (c.contacted7d || 0) / c.activeDays7d : 0), 0);
     const runwayDays = contactedRate > 0 ? leadsLeft / contactedRate : (leadsLeft > 0 ? Infinity : 0);
     // Sum sparklines for client-level daily series
     const sparkLen = Math.max(0, ...g.campaigns.map((c) => (c.sparkline || []).length));
