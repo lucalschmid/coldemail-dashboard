@@ -311,19 +311,20 @@ function buildDashboardData() {
       client:       CLIENT_MAP[c.id] || DEFAULT_CLIENT,
       campaign:     c.name,
       status:       statusLabel(c.status),
-      // sends7d  = total messages dispatched (incl. follow-ups) → matches
-      //            Instantly's "Sent" line on the analytics chart.
-      // contacted7d = leads whose FIRST message in this campaign landed in the
-      //            window. Matches Instantly's "Sequence started" — the panel
-      //            it uses as the reply-rate denominator. NOT contacted_count
-      //            (which counts any lead with activity, including follow-ups
-      //            to leads first contacted before the window).
+      // sends7d  = new_leads_contacted_count = leads whose FIRST message in
+      //            this campaign landed in the window. Matches Instantly's
+      //            prominent "Sequence started" tile (1,280 for Finance) —
+      //            which is the number users compare against. NOT
+      //            emails_sent_count (= 2,400 = total dispatched incl.
+      //            follow-ups, what the Sent chart line sums).
+      // contacted7d = mirror of sends7d for legacy callers (derive.js still
+      //            reads it for the reply-rate denominator and runway math).
       // replies7d = reply_count_automatic_unique. Despite the "automatic"
       //            suffix, this is the field Instantly's UI "Reply rate" panel
       //            actually sums (confirmed: 21 = panel value for Finance
       //            Leads). reply_count_unique (5) is a narrower subset and
       //            doesn't match. Verified via testDebugCampaign 2026-05-29.
-      sends7d:      num(s.emails_sent_count),
+      sends7d:      num(s.new_leads_contacted_count),
       contacted7d:  num(s.new_leads_contacted_count),
       activeDays7d: activeDays7d,
       replies7d:    num(s.reply_count_automatic_unique),
