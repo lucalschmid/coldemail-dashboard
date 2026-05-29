@@ -318,13 +318,15 @@ function buildDashboardData() {
       //            it uses as the reply-rate denominator. NOT contacted_count
       //            (which counts any lead with activity, including follow-ups
       //            to leads first contacted before the window).
-      // replies7d = real replies only (reply_count_unique). Instantly's "Reply
-      //            rate" panel excludes auto-replies; mirror that so the rate
-      //            and absolute count both match.
+      // replies7d = reply_count_automatic_unique. Despite the "automatic"
+      //            suffix, this is the field Instantly's UI "Reply rate" panel
+      //            actually sums (confirmed: 21 = panel value for Finance
+      //            Leads). reply_count_unique (5) is a narrower subset and
+      //            doesn't match. Verified via testDebugCampaign 2026-05-29.
       sends7d:      num(s.emails_sent_count),
       contacted7d:  num(s.new_leads_contacted_count),
       activeDays7d: activeDays7d,
-      replies7d:    num(s.reply_count_unique),
+      replies7d:    num(s.reply_count_automatic_unique),
       posReplies7d: num(s.total_opportunities),
       totalLeads,
       contacted:    totalContacted,
