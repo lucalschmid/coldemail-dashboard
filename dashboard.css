@@ -650,6 +650,7 @@ html, body { margin: 0; padding: 0; }
 
 /* Campaign rows inside group */
 .csd-camprow {
+  position: relative;
   display: grid;
   grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 130px;
   align-items: center;
@@ -659,12 +660,27 @@ html, body { margin: 0; padding: 0; }
   font-size: 13px;
   color: var(--d-fg-2);
   font-feature-settings: 'tnum' 1, 'lnum' 1;
-  transition: background 140ms var(--ease-standard);
+  transition: background 140ms var(--ease-standard), opacity 140ms var(--ease-standard);
 }
 .csd-camprow:last-child { border-bottom: 0; }
 .csd-camprow:hover { background: var(--d-row-hover); }
-.csd-camprow.is-paused .name-cell .n { color: var(--d-fg-3); }
-.csd-camprow.is-paused .stat-num { color: var(--d-fg-3); }
+
+/* Active row: subtle accent bar on the left to make it pop without bg colour. */
+.csd-camprow:not(.is-paused)::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--d-positive);
+}
+/* Inactive (paused / draft / completed): fade meaningfully so active rows
+   visually dominate. Hover recovers most of the contrast so they stay
+   readable when the user scans them. */
+.csd-camprow.is-paused {
+  opacity: 0.52;
+}
+.csd-camprow.is-paused:hover { opacity: 0.92; }
 
 .csd-camprow .gutter { color: var(--d-fg-mute); display: grid; place-items: center; }
 .csd-camprow-del {
@@ -724,12 +740,10 @@ html, body { margin: 0; padding: 0; }
 }
 .csd-camprow .stat-num .sublabel-editable {
   cursor: pointer;
-  border-bottom: 1px dashed transparent;
-  transition: color 120ms ease, border-color 120ms ease;
+  transition: color 120ms ease;
 }
 .csd-camprow .stat-num .sublabel-editable:hover {
-  color: var(--d-fg);
-  border-bottom-color: var(--d-fg-mute);
+  color: var(--d-accent);
 }
 /* Manual target — distinguish from the actual-rate auto value. */
 .csd-camprow .stat-num .sublabel-target {
