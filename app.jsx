@@ -197,6 +197,26 @@ function App() {
     finally { setRefreshing(false); setLoading(false); }
   }, []);
 
+  // Force GAS to rebuild its cache from Instantly's live API. Slow (~30-60s)
+  // but gives an on-demand way to chase live data when the hourly cron's last
+  // run is too stale to compare against Instantly's UI.
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildError, setRebuildError] = useState(null);
+  const rebuild = useCallback(async () => {
+    if (!window.DASHBOARD_DATA?.forceRebuild) return;
+    setRebuilding(true);
+    setRebuildError(null);
+    try {
+      const d = await window.DASHBOARD_DATA.forceRebuild();
+      setData(d);
+    } catch (e) {
+      setRebuildError(e.message || 'Rebuild failed');
+      console.error(e);
+    } finally {
+      setRebuilding(false);
+    }
+  }, []);
+
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
     const id = setInterval(refresh, 5 * 60 * 1000);
@@ -575,7 +595,15 @@ function App() {
       React.createElement('span', { className: 'pulse' }),
       React.createElement('span', { className: 'src' }, sourceLabel),
       React.createElement('span', null, '·'),
-      React.createElement('span', null, fmtA.timeAgo(data?.generated_at))),
+      React.createElement('span', null, rebuilding ? 'rebuilding…' : fmtA.timeAgo(data?.generated_at)),
+      !isMock && window.DASHBOARD_DATA?.forceRebuild && React.createElement('button', {
+        className: 'csd-rebuild-link',
+        onClick: rebuild,
+        disabled: rebuilding,
+        title: rebuildError
+          ? 'Last rebuild error: ' + rebuildError + ' (click to retry)'
+          : 'Force GAS to fetch fresh data from Instantly (~30-60s). Cron runs hourly anyway.',
+      }, rebuilding ? '…' : '↻ Rebuild')),
     React.createElement('button', {
       className: 'csd-icon-btn' + (refreshing ? ' is-active' : ''),
       onClick: refresh,

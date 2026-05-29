@@ -247,6 +247,18 @@ window.DASHBOARD_DATA = (function () {
     }
   }
 
+  // Force the GAS to rebuild its cache from Instantly's live API and return
+  // the fresh payload. Slow — up to ~90s — because GAS does a sync rebuild
+  // before responding. Use sparingly; the hourly trigger covers normal cases.
+  async function forceRebuild() {
+    if (!APPS_SCRIPT_URL) throw new Error('APPS_SCRIPT_URL not set in data.js');
+    const sep = APPS_SCRIPT_URL.includes('?') ? '&' : '?';
+    const url = APPS_SCRIPT_URL + sep + 'action=refresh';
+    const data = await loadJSONP(url, 'callback', 90000);
+    if (data && data.error) throw new Error(data.error);
+    return { ...data, source: 'live' };
+  }
+
   // Fetch pre-aggregated inbox analytics via GAS proxy (CORS-free from file://)
   // First call may take up to 90s if the GAS cache is empty (it builds inline).
   async function loadAnalytics() {
@@ -266,5 +278,5 @@ window.DASHBOARD_DATA = (function () {
     return result; // { inboxes: [...], generated_at }
   }
 
-  return { load, loadAnalytics, mock, APPS_SCRIPT_URL };
+  return { load, loadAnalytics, forceRebuild, mock, APPS_SCRIPT_URL };
 })();

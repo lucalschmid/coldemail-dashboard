@@ -71,6 +71,23 @@ function doGet(e) {
     return handleInboxAnalytics(e, cb);
   }
 
+  // Force a synchronous cache rebuild and return the fresh payload. Slow
+  // (~30-60s for the user's campaign count) but gives the dashboard a way
+  // to grab live data on demand instead of waiting for the hourly trigger.
+  if (e.parameter && e.parameter.action === 'refresh') {
+    try {
+      refreshCache();
+      const fresh = PropertiesService.getScriptProperties().getProperty(CACHE_KEY);
+      return ContentService
+        .createTextOutput(cb + '(' + (fresh || JSON.stringify({ error: 'rebuild_empty' })) + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    } catch (err) {
+      return ContentService
+        .createTextOutput(cb + '(' + JSON.stringify({ error: err.toString() }) + ')')
+        .setMimeType(ContentService.MimeType.JAVASCRIPT);
+    }
+  }
+
   // Default: serve cached campaign dashboard data
   try {
     const props   = PropertiesService.getScriptProperties();
