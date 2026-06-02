@@ -71,6 +71,15 @@ function doGet(e) {
     return handleInboxAnalytics(e, cb);
   }
 
+  // Token-protected: remove every inbox tagged with `tag` from the allowlist
+  // and rebuild the analytics cache. The token lives in Script Properties as
+  // DASHBOARD_TOKEN and must be passed as `token=` in the URL. This is the
+  // public Web App URL — without a token check anyone could destroy the
+  // allowlist.
+  if (e.parameter && e.parameter.action === 'remove_tag') {
+    return handleRemoveTag(e, cb);
+  }
+
   // Force a synchronous cache rebuild and return the fresh payload. Slow
   // (~30-60s for the user's campaign count) but gives the dashboard a way
   // to grab live data on demand instead of waiting for the hourly trigger.
@@ -222,6 +231,34 @@ function safeJsonArray(res) {
   catch (e) { return []; }
 }
 
+
+// ── doGet handler: remove inboxes by tag (token-protected) ──
+// JSONP route invoked from the dashboard's Inbox Analytics tab. Verifies the
+// caller has the shared token (stored in Script Properties as DASHBOARD_TOKEN),
+// then runs removeInboxesByTag + returns the fresh analytics payload so the
+// dashboard can swap in clean data without a second round-trip.
+function handleRemoveTag(e, cb) {
+  try {
+    var expected = PropertiesService.getScriptProperties().getProperty('DASHBOARD_TOKEN');
+    if (!expected) throw new Error('DASHBOARD_TOKEN not set in Script Properties. Add one before using this endpoint.');
+    if (!e.parameter.token || e.parameter.token !== expected) throw new Error('Invalid or missing token.');
+    var tag = e.parameter.tag;
+    if (!tag) throw new Error('tag parameter is required');
+    var removed = removeInboxesByTag(tag); // rebuilds analytics cache as side-effect
+    var fresh = PropertiesService.getScriptProperties().getProperty(ANALYTICS_CACHE_KEY);
+    return ContentService
+      .createTextOutput(cb + '(' + JSON.stringify({
+        removed: removed,
+        tag: tag,
+        analytics: fresh ? JSON.parse(fresh) : null,
+      }) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(cb + '(' + JSON.stringify({ error: err.toString() }) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+}
 
 // ── Remove inboxes by tag ────────────────────────────────────
 // Drop every email in the allowlist whose tag matches `tag` exactly
