@@ -259,24 +259,6 @@ window.DASHBOARD_DATA = (function () {
     return { ...data, source: 'live' };
   }
 
-  // Token-protected. Asks GAS to drop every inbox in the allowlist tagged
-  // exactly `tag`, then rebuild the analytics cache. Returns { removed,
-  // analytics } so the caller can swap in clean data without a re-fetch.
-  async function removeInboxesByTag(tag, token) {
-    if (!APPS_SCRIPT_URL) throw new Error('APPS_SCRIPT_URL not set in data.js');
-    if (!tag) throw new Error('tag is required');
-    if (!token) throw new Error('token is required');
-    const sep = APPS_SCRIPT_URL.includes('?') ? '&' : '?';
-    const url = APPS_SCRIPT_URL + sep
-      + 'action=remove_tag'
-      + '&tag=' + encodeURIComponent(tag)
-      + '&token=' + encodeURIComponent(token);
-    // 90s timeout: removeInboxesByTag triggers a full analytics cache rebuild.
-    const result = await loadJSONP(url, 'callback', 90000);
-    if (result && result.error) throw new Error(result.error);
-    return result; // { removed, tag, analytics }
-  }
-
   // Fetch pre-aggregated inbox analytics via GAS proxy (CORS-free from file://)
   // First call may take up to 90s if the GAS cache is empty (it builds inline).
   async function loadAnalytics() {
@@ -296,5 +278,5 @@ window.DASHBOARD_DATA = (function () {
     return result; // { inboxes: [...], generated_at }
   }
 
-  return { load, loadAnalytics, forceRebuild, removeInboxesByTag, mock, APPS_SCRIPT_URL };
+  return { load, loadAnalytics, forceRebuild, mock, APPS_SCRIPT_URL };
 })();

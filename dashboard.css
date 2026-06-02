@@ -2230,30 +2230,6 @@ html, body { margin: 0; padding: 0; }
 /* Same badge re-used inside the tag-group header row. Sits inline next to
    the label without the row-row "block under email" offset. */
 .ia-domain-status { margin-top: 0; margin-left: 4px; }
-
-/* Delete-by-tag button on tag group headers — only visible on row hover so
-   it doesn't compete with the actual data for attention. */
-.ia-domain-delete {
-  margin-left: auto;
-  margin-right: 4px;
-  background: transparent;
-  border: 1px solid transparent;
-  padding: 3px 5px;
-  border-radius: 6px;
-  color: var(--d-fg-mute);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease, background 120ms ease;
-  display: inline-flex; align-items: center;
-}
-.ia-domain-row:hover .ia-domain-delete { opacity: 1; }
-.ia-domain-delete:hover:not(:disabled) {
-  color: var(--d-critical);
-  border-color: var(--d-critical);
-  background: color-mix(in oklab, var(--d-critical) 8%, transparent);
-}
-.ia-domain-delete.is-loading { opacity: 1; cursor: wait; font-size: 12px; }
-.ia-domain-delete:disabled { cursor: wait; }
 .ia-replies-total { color: var(--d-fg); font-weight: 500; }
 .ia-replies-real  { color: var(--d-positive); }
 .ia-replies-auto  { color: var(--d-fg-mute); }

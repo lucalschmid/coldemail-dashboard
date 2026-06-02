@@ -164,11 +164,6 @@ function App() {
   const [editingDailyTargetFor, setEditingDailyTargetFor] = useState(null);
   const [dailyTargetInput, setDailyTargetInput] = useState('');
 
-  // Bulk delete-by-tag in Inbox Analytics. Calls a token-protected GAS endpoint
-  // because the Web App URL is public — without the token anyone could destroy
-  // the allowlist. Token is stored once in localStorage after the first prompt.
-  const [deletingTag, setDeletingTag] = useState(null); // tag name in flight
-
   // Add-list modal
   const [addListModal, setAddListModal] = useState(null); // { categoryId } | null
   const [addListForm, setAddListForm] = useState({ name: '', status: 'Active', lastActive: '', leadCount: '', runningText: '', csvData: null, csvName: '' });
@@ -1020,48 +1015,6 @@ function App() {
     setEditingDailyTargetFor(null);
   };
 
-  // ---------- Bulk delete inboxes by tag ----------
-  const onDeleteTag = useCallback(async (tag) => {
-    if (!window.DASHBOARD_DATA?.removeInboxesByTag) {
-      window.alert('Delete is unavailable — your data layer is not connected to GAS.');
-      return;
-    }
-    const sure = window.confirm(
-      'Permanently remove every inbox tagged "' + tag + '" from the dashboard?\n\n' +
-      'This drops them from the GAS allowlist and rebuilds the analytics cache. ' +
-      'It does NOT delete the accounts in Instantly itself.'
-    );
-    if (!sure) return;
-
-    let token;
-    try { token = localStorage.getItem('csd:gas-token') || ''; } catch (e) { token = ''; }
-    if (!token) {
-      token = window.prompt(
-        'One-time setup: enter your dashboard write-token.\n\n' +
-        'Open your GAS project → Project Settings → Script properties → ' +
-        'add DASHBOARD_TOKEN with any random string. Paste that string here:'
-      );
-      if (!token) return;
-      try { localStorage.setItem('csd:gas-token', token); } catch (e) {}
-    }
-
-    setDeletingTag(tag);
-    try {
-      const result = await window.DASHBOARD_DATA.removeInboxesByTag(tag, token);
-      if (result && result.analytics) setInboxRawData(result.analytics);
-      window.alert('Removed ' + (result?.removed || 0) + ' inbox(es) tagged "' + tag + '".');
-    } catch (err) {
-      const msg = err.message || String(err);
-      window.alert('Delete failed: ' + msg);
-      // If the token was wrong, clear it so we prompt again next time.
-      if (/token/i.test(msg)) {
-        try { localStorage.removeItem('csd:gas-token'); } catch (e) {}
-      }
-    } finally {
-      setDeletingTag(null);
-    }
-  }, []);
-
   // ---------- Manual lead list handlers ----------
   const addLLCategory = () => {
     const trimmed = newLLCategoryName.trim();
@@ -1611,23 +1564,7 @@ function App() {
                               },
                                 React.createElement('polyline', { points: '6 9 12 15 18 9' })),
                               React.createElement('span', { className: 'ia-domain-label' }, groupKey),
-                              groupStatus,
-                              // Bulk delete affordance — only when grouped by tag,
-                              // since "Client" groups aggregate across many tags.
-                              analyticsGroupBy === 'tag' && React.createElement('button', {
-                                className: 'ia-domain-delete' + (deletingTag === groupKey ? ' is-loading' : ''),
-                                title: 'Remove every inbox in this tag from the dashboard',
-                                disabled: deletingTag === groupKey,
-                                onClick: (e) => { e.stopPropagation(); onDeleteTag(groupKey); },
-                              },
-                                deletingTag === groupKey
-                                  ? '…'
-                                  : React.createElement('svg', {
-                                      width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round',
-                                    },
-                                      React.createElement('polyline', { points: '3 6 5 6 21 6' }),
-                                      React.createElement('path', { d: 'M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6' }),
-                                      React.createElement('path', { d: 'M10 11v6M14 11v6' }))))),
+                              groupStatus)),
                           React.createElement('td', { className: 'ia-domain-td-num' }, num(gt.sent)),
                           React.createElement('td', { className: 'ia-domain-td-num ia-replies-total' }, num(gt.replies)),
                           React.createElement('td', { className: 'ia-domain-td-num ia-replies-real' }, num(gt.realReplies)),
