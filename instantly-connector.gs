@@ -223,6 +223,48 @@ function safeJsonArray(res) {
 }
 
 
+// ── Remove inboxes by tag ────────────────────────────────────
+// Drop every email in the allowlist whose tag matches `tag` exactly
+// (case-sensitive), then rebuild the analytics cache so the dashboard
+// stops showing those zero-activity rows.
+//
+// Usage from the Apps Script editor — select this function in the
+// dropdown, but you can't pass args from the picker, so wrap it in a
+// caller like this and run that instead:
+//
+//   function cleanup() { removeInboxesByTag('CS Hypertide Inboxes 1'); }
+//
+// Or open the editor's debug console and run:
+//
+//   removeInboxesByTag('CS Hypertide Inboxes 1');
+//
+// Returns the count removed (also logged).
+function removeInboxesByTag(tag) {
+  if (!tag) throw new Error('removeInboxesByTag(tag): tag is required');
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty(ACCOUNTS_KEY);
+  if (!raw) throw new Error('Accounts list not set — run setAccountsList() first.');
+  var map = JSON.parse(raw);
+  var before = Object.keys(map).length;
+  var removed = [];
+  for (var email in map) {
+    if (map[email] === tag) {
+      removed.push(email);
+      delete map[email];
+    }
+  }
+  props.setProperty(ACCOUNTS_KEY, JSON.stringify(map));
+  Logger.log('Removed ' + removed.length + ' of ' + before + ' inboxes (tag="' + tag + '")');
+  if (removed.length > 0) {
+    Logger.log('Rebuilding analytics cache without the removed inboxes…');
+    refreshAnalyticsCache();
+    Logger.log('Done. Reload the dashboard.');
+  } else {
+    Logger.log('No matches — nothing changed. Check the tag spelling against the dashboard.');
+  }
+  return removed.length;
+}
+
 // ── Store current accounts allowlist ─────────────────────────
 // Re-run this whenever you update your accounts CSV.
 // Stores an email→tagName map used to seed the analytics cache.
