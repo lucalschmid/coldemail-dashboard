@@ -88,6 +88,12 @@ function App() {
   const [resolved, setResolved] = useState(loadResolved);
   const [openGroups, setOpenGroups] = useState(loadOpenGroups);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem('csd:sidebar-collapsed:v1') === '1'; } catch (e) { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('csd:sidebar-collapsed:v1', sidebarCollapsed ? '1' : '0'); } catch (e) {}
+  }, [sidebarCollapsed]);
   const [activeNav, setActiveNav] = useState('campaigns');
   const [clientFilter, setClientFilter] = useState('all');
   // 'all' | 'active' — hides paused / draft / completed when set to 'active'.
@@ -528,12 +534,15 @@ function App() {
   const navItem = (key, label, icon, count) => React.createElement('a', {
     className: activeNav === key ? 'active' : '',
     onClick: () => { setActiveNav(key); setClientFilter('all'); },
-  }, icon, label, count != null && React.createElement('span', { className: 'count' }, count));
+    title: label,
+  }, icon,
+    React.createElement('span', { className: 'label' }, label),
+    count != null && React.createElement('span', { className: 'count' }, count));
 
-  const sidebar = React.createElement('aside', { className: 'csd-sidebar' },
+  const sidebar = React.createElement('aside', { className: 'csd-sidebar' + (sidebarCollapsed ? ' is-collapsed' : '') },
     React.createElement('div', { className: 'csd-sidebar-brand' },
       React.createElement('img', { src: 'logo.png', className: 'brand-logo', alt: '' }),
-      React.createElement('span', null, 'Compound Scaling Ops Center')),
+      React.createElement('span', { className: 'brand-label' }, 'Compound Scaling')),
     React.createElement('div', { className: 'csd-sidebar-section' }, 'Workspace'),
     React.createElement('nav', { className: 'csd-nav' },
       navItem('overview', 'Overview',
@@ -590,7 +599,16 @@ function App() {
       navItem('settings', 'Settings',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
           React.createElement('circle', { cx: 12, cy: 12, r: 3 }),
-          React.createElement('path', { d: 'M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24' }))))
+          React.createElement('path', { d: 'M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24' })))),
+    React.createElement('button', {
+      className: 'csd-sidebar-collapse-btn',
+      onClick: () => setSidebarCollapsed(v => !v),
+      'aria-label': sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+      title: sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+    },
+      React.createElement('svg', { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        React.createElement('polyline', { points: '15 18 9 12 15 6' })),
+      React.createElement('span', { className: 'label' }, 'Collapse'))
   );
 
   // ---------- Topbar ----------
@@ -1702,7 +1720,7 @@ function App() {
   else viewBody = campaignsBody;
 
   // ---------- Main ----------
-  return React.createElement('div', { className: 'csd' },
+  return React.createElement('div', { className: 'csd' + (sidebarCollapsed ? ' csd--sidebar-collapsed' : '') },
     sidebar,
     React.createElement('div', null,
       topbar,

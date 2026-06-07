@@ -66,11 +66,12 @@ html, body { margin: 0; padding: 0; }
   min-height: 100vh;
   font-size: 14px;
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: auto 1fr;
 }
 
 /* ---------- Sidebar ---------- */
 .csd-sidebar {
+  width: 232px;
   background: var(--d-sidebar-bg);
   border-right: 1px solid var(--d-rule);
   position: sticky;
@@ -79,6 +80,81 @@ html, body { margin: 0; padding: 0; }
   display: flex;
   flex-direction: column;
   padding: 20px 0;
+  transition: width 180ms var(--ease-standard);
+  overflow: hidden;
+}
+.csd-sidebar.is-collapsed { width: 64px; }
+.csd-sidebar.is-collapsed .csd-sidebar-brand .brand-label,
+.csd-sidebar.is-collapsed .csd-sidebar-section,
+.csd-sidebar.is-collapsed .csd-nav a .label,
+.csd-sidebar.is-collapsed .csd-nav a .count,
+.csd-sidebar.is-collapsed .csd-sidebar-collapse-btn .label {
+  display: none;
+}
+.csd-sidebar.is-collapsed .csd-sidebar-brand {
+  padding: 4px 0 20px;
+  justify-content: center;
+}
+.csd-sidebar.is-collapsed .csd-nav { padding: 0 8px; }
+.csd-sidebar.is-collapsed .csd-nav a {
+  padding: 9px 0;
+  justify-content: center;
+  position: relative;
+}
+.csd-sidebar.is-collapsed .csd-nav a.active::before {
+  /* Replace the inline accent stripe with a left-edge stripe in collapsed mode */
+  position: absolute;
+  left: -8px;
+  margin: 0;
+  width: 2px;
+  height: 16px;
+}
+.csd-sidebar.is-collapsed .csd-nav + .csd-sidebar-section {
+  /* When section labels are hidden, the spacing between nav groups would
+     collapse. Keep a small gap by promoting section dividers to a thin rule.
+     font-size:0 hides the text node, ::before draws the rule. */
+  display: block;
+  padding: 8px 12px 0;
+  height: 9px;
+  font-size: 0;
+  overflow: hidden;
+}
+.csd-sidebar.is-collapsed .csd-nav + .csd-sidebar-section::before {
+  content: '';
+  display: block;
+  height: 1px;
+  background: var(--d-rule);
+}
+.csd-sidebar-collapse-btn {
+  margin-top: auto;
+  margin: auto 12px 0;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--d-rule);
+  color: var(--d-fg-3);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  border-radius: 0;
+  transition: color 140ms var(--ease-standard);
+}
+.csd-sidebar-collapse-btn:hover { color: var(--d-fg); }
+.csd-sidebar-collapse-btn svg {
+  transition: transform 180ms var(--ease-standard);
+  flex-shrink: 0;
+}
+.csd-sidebar.is-collapsed .csd-sidebar-collapse-btn {
+  justify-content: center;
+  padding: 8px 0;
+  margin: auto 8px 0;
+}
+.csd-sidebar.is-collapsed .csd-sidebar-collapse-btn svg {
+  transform: rotate(180deg);
 }
 .csd-sidebar-brand {
   padding: 4px 24px 28px;
