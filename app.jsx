@@ -533,8 +533,32 @@ function App() {
   const sidebar = React.createElement('aside', { className: 'csd-sidebar' },
     React.createElement('div', { className: 'csd-sidebar-brand' },
       React.createElement('img', { src: 'logo.png', className: 'brand-logo', alt: '' }),
-      React.createElement('span', null, 'Compound Scaling')),
+      React.createElement('span', null, 'Compound Scaling Ops Center')),
     React.createElement('div', { className: 'csd-sidebar-section' }, 'Workspace'),
+    React.createElement('nav', { className: 'csd-nav' },
+      navItem('overview', 'Overview',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('rect', { x: 3, y: 3, width: 7, height: 9 }),
+          React.createElement('rect', { x: 14, y: 3, width: 7, height: 5 }),
+          React.createElement('rect', { x: 14, y: 12, width: 7, height: 9 }),
+          React.createElement('rect', { x: 3, y: 16, width: 7, height: 5 }))),
+      navItem('goals', 'Goals & Targets',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('circle', { cx: 12, cy: 12, r: 10 }),
+          React.createElement('circle', { cx: 12, cy: 12, r: 6 }),
+          React.createElement('circle', { cx: 12, cy: 12, r: 2 }))),
+      navItem('clients', 'Clients',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }),
+          React.createElement('circle', { cx: 9, cy: 7, r: 4 }),
+          React.createElement('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }),
+          React.createElement('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })),
+        allGroups.filter(g => g.client !== 'Unassigned').length),
+      navItem('reports', 'Reports',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('path', { d: 'M21.21 15.89A10 10 0 1 1 8 2.83' }),
+          React.createElement('path', { d: 'M22 12A10 10 0 0 0 12 2v10z' })))),
+    React.createElement('div', { className: 'csd-sidebar-section' }, 'Email'),
     React.createElement('nav', { className: 'csd-nav' },
       navItem('campaigns', 'Campaigns',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
@@ -547,20 +571,20 @@ function App() {
           React.createElement('line', { x1: 18, y1: 20, x2: 18, y2: 10 }),
           React.createElement('line', { x1: 12, y1: 20, x2: 12, y2: 4 }),
           React.createElement('line', { x1: 6, y1: 20, x2: 6, y2: 14 }))),
-      navItem('clients', 'Clients',
-        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          React.createElement('path', { d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }),
-          React.createElement('circle', { cx: 9, cy: 7, r: 4 }),
-          React.createElement('path', { d: 'M23 21v-2a4 4 0 0 0-3-3.87' }),
-          React.createElement('path', { d: 'M16 3.13a4 4 0 0 1 0 7.75' })),
-        allGroups.filter(g => g.client !== 'Unassigned').length),
       navItem('leadlists', 'Lead Lists',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          React.createElement('path', { d: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' }))),
-      navItem('reports', 'Reports',
+          React.createElement('path', { d: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01' })))),
+    React.createElement('div', { className: 'csd-sidebar-section' }, 'LinkedIn'),
+    React.createElement('nav', { className: 'csd-nav' },
+      navItem('li-accounts', 'Accounts',
         React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
-          React.createElement('path', { d: 'M21.21 15.89A10 10 0 1 1 8 2.83' }),
-          React.createElement('path', { d: 'M22 12A10 10 0 0 0 12 2v10z' })))),
+          React.createElement('rect', { x: 2, y: 4, width: 20, height: 16, rx: 2 }),
+          React.createElement('circle', { cx: 8, cy: 11, r: 2.5 }),
+          React.createElement('path', { d: 'M13 9h6M13 13h6M5.5 16.5c.7-1.2 1.6-1.7 2.5-1.7s1.8.5 2.5 1.7' }))),
+      navItem('li-performance', 'Performance',
+        React.createElement('svg', { width: 15, height: 15, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round' },
+          React.createElement('polyline', { points: '3 17 9 11 13 15 21 7' }),
+          React.createElement('polyline', { points: '15 7 21 7 21 13' })))),
     React.createElement('div', { className: 'csd-sidebar-section' }, 'Account'),
     React.createElement('nav', { className: 'csd-nav' },
       navItem('settings', 'Settings',
@@ -570,14 +594,80 @@ function App() {
   );
 
   // ---------- Topbar ----------
-  const titleByNav = { campaigns: 'Campaigns', clients: 'Clients', leadlists: 'Lead Lists', reports: 'Reports', analytics: 'Inbox Analytics', settings: 'Settings' };
+  const titleByNav = {
+    campaigns: 'Campaigns',
+    clients: 'Clients',
+    leadlists: 'Lead Lists',
+    reports: 'Reports',
+    analytics: 'Inbox Analytics',
+    settings: 'Settings',
+    overview: 'Overview',
+    goals: 'Goals & Targets',
+    'li-accounts': 'LinkedIn Accounts',
+    'li-performance': 'LinkedIn Performance',
+  };
+
+  // Top-bar crumb / meta pill depend on which page is active.
+  // - Email pages (campaigns, analytics, leadlists) + Clients show the live
+  //   Instantly status (the email data still backs those views).
+  // - LinkedIn pages show a HeyReach "coming soon" placeholder.
+  // - Goals & Overview show their own coming-soon placeholders.
+  // - Reports & Settings show a neutral pill (the data is still live but the
+  //   page isn't channel-specific).
+  const emailNavs = new Set(['campaigns', 'analytics', 'leadlists', 'clients']);
+  const isEmailPage = emailNavs.has(activeNav);
+  const isLinkedInPage = activeNav === 'li-accounts' || activeNav === 'li-performance';
+
+  let crumbNode;
+  if (isEmailPage) {
+    crumbNode = React.createElement('span', { className: 'crumb' },
+      clientFilter === 'all'
+        ? '· ' + derived.length + ' total · ' + window.CSD.aggregate(derived).active + ' active'
+        : '· ' + clientFilter);
+  } else {
+    crumbNode = null;
+  }
+
+  let metaPill;
+  if (isLinkedInPage) {
+    metaPill = React.createElement('div', { className: 'csd-meta-pill is-placeholder' },
+      React.createElement('span', { className: 'pulse' }),
+      React.createElement('span', { className: 'src' }, 'Live · HeyReach'),
+      React.createElement('span', null, '·'),
+      React.createElement('span', null, 'Coming soon'));
+  } else if (activeNav === 'goals') {
+    metaPill = React.createElement('div', { className: 'csd-meta-pill is-placeholder' },
+      React.createElement('span', { className: 'pulse' }),
+      React.createElement('span', { className: 'src' }, 'Goals tracking'),
+      React.createElement('span', null, '·'),
+      React.createElement('span', null, 'Coming soon'));
+  } else if (activeNav === 'overview') {
+    metaPill = React.createElement('div', { className: 'csd-meta-pill is-placeholder' },
+      React.createElement('span', { className: 'pulse' }),
+      React.createElement('span', { className: 'src' }, 'Multi-channel'),
+      React.createElement('span', null, '·'),
+      React.createElement('span', null, 'Coming soon'));
+  } else {
+    // Email pages + Clients/Reports/Settings: existing Instantly live pill
+    metaPill = React.createElement('div', { className: 'csd-meta-pill' + (isMock ? ' is-mock' : '') },
+      React.createElement('span', { className: 'pulse' }),
+      React.createElement('span', { className: 'src' }, sourceLabel),
+      React.createElement('span', null, '·'),
+      React.createElement('span', null, rebuilding ? 'rebuilding…' : fmtA.timeAgo(data?.generated_at)),
+      !isMock && window.DASHBOARD_DATA?.forceRebuild && React.createElement('button', {
+        className: 'csd-rebuild-link',
+        onClick: rebuild,
+        disabled: rebuilding,
+        title: rebuildError
+          ? 'Last rebuild error: ' + rebuildError + ' (click to retry)'
+          : 'Force GAS to fetch fresh data from Instantly (~30-60s). Cron runs hourly anyway.',
+      }, rebuilding ? '…' : '↻ Rebuild'));
+  }
+
   const topbar = React.createElement('div', { className: 'csd-topbar' },
     React.createElement('div', { className: 'csd-topbar-title' },
       React.createElement('h1', null, titleByNav[activeNav] || 'Dashboard'),
-      React.createElement('span', { className: 'crumb' },
-        clientFilter === 'all'
-          ? '· ' + derived.length + ' total · ' + window.CSD.aggregate(derived).active + ' active'
-          : '· ' + clientFilter)),
+      crumbNode),
     React.createElement('div', { className: 'csd-topbar-spacer' }),
     React.createElement('div', { className: 'csd-topbar-search' },
       React.createElement('svg', { width: 13, height: 13, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' },
@@ -591,19 +681,7 @@ function App() {
         onChange: (e) => setSearch(e.target.value),
       }),
       React.createElement('kbd', null, '⌘K')),
-    React.createElement('div', { className: 'csd-meta-pill' + (isMock ? ' is-mock' : '') },
-      React.createElement('span', { className: 'pulse' }),
-      React.createElement('span', { className: 'src' }, sourceLabel),
-      React.createElement('span', null, '·'),
-      React.createElement('span', null, rebuilding ? 'rebuilding…' : fmtA.timeAgo(data?.generated_at)),
-      !isMock && window.DASHBOARD_DATA?.forceRebuild && React.createElement('button', {
-        className: 'csd-rebuild-link',
-        onClick: rebuild,
-        disabled: rebuilding,
-        title: rebuildError
-          ? 'Last rebuild error: ' + rebuildError + ' (click to retry)'
-          : 'Force GAS to fetch fresh data from Instantly (~30-60s). Cron runs hourly anyway.',
-      }, rebuilding ? '…' : '↻ Rebuild')),
+    metaPill,
     React.createElement('button', {
       className: 'csd-icon-btn' + (refreshing ? ' is-active' : ''),
       onClick: refresh,
@@ -730,7 +808,10 @@ function App() {
   );
 
   // ---------- Empty page placeholder ----------
-  const emptyPage = (title, msg) => React.createElement('div', { className: 'csd-empty-page' },
+  const emptyPage = (title, msg, opts) => React.createElement('div', {
+    className: 'csd-empty-page' + (opts && opts.comingSoon ? ' is-coming-soon' : ''),
+  },
+    opts && opts.comingSoon && React.createElement('span', { className: 'csd-coming-soon-pill' }, 'Coming soon'),
     React.createElement('h3', null, title),
     React.createElement('p', null, msg));
 
@@ -1614,6 +1695,10 @@ function App() {
   else if (activeNav === 'reports') viewBody = emptyPage('Reports', 'Weekly and monthly snapshots, exportable as CSV or PDF.');
   else if (activeNav === 'analytics') viewBody = inboxAnalyticsView;
   else if (activeNav === 'settings') viewBody = emptyPage('Settings', 'Thresholds, integrations, team access. Use the Tweaks toggle for the live design knobs.');
+  else if (activeNav === 'overview') viewBody = emptyPage('Overview', 'Cross-channel snapshot. See pace toward your goals, top metrics across email and LinkedIn, and key alerts in one place.', { comingSoon: true });
+  else if (activeNav === 'goals') viewBody = emptyPage('Goals & Targets', 'Set business goals and reverse-engineer the daily, weekly, and monthly numbers needed to hit them. Live editable, pulls assumptions from your trackers.', { comingSoon: true });
+  else if (activeNav === 'li-accounts') viewBody = emptyPage('LinkedIn Accounts', 'Per-account view of your 6 LinkedIn accounts. Connection requests, acceptance rate, PRR, CSR, ABR, and calls booked per account.', { comingSoon: true });
+  else if (activeNav === 'li-performance') viewBody = emptyPage('LinkedIn Performance', 'Aggregated LinkedIn metrics with daily, weekly, and monthly views. Trend tracking across all sender accounts.', { comingSoon: true });
   else viewBody = campaignsBody;
 
   // ---------- Main ----------

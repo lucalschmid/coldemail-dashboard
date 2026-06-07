@@ -273,6 +273,13 @@ html, body { margin: 0; padding: 0; }
   animation: csd-pulse 2.6s ease-in-out infinite;
 }
 .csd-meta-pill.is-mock .pulse { background: var(--d-warning); }
+.csd-meta-pill.is-placeholder { color: var(--d-fg-mute); }
+.csd-meta-pill.is-placeholder .pulse {
+  background: var(--d-fg-mute);
+  animation: none;
+  box-shadow: none;
+}
+.csd-meta-pill.is-placeholder .src { color: var(--d-fg-3); }
 @keyframes csd-pulse {
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
   50%      { box-shadow: 0 0 0 4px color-mix(in oklab, var(--d-positive) 25%, transparent); }
@@ -1012,6 +1019,19 @@ html, body { margin: 0; padding: 0; }
   margin: 0 auto;
   max-width: 420px;
   line-height: 1.5;
+}
+.csd-coming-soon-pill {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  color: var(--d-fg-mute);
+  background: var(--d-bg-soft);
+  border: 1px solid var(--d-rule);
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 14px;
 }
 
 /* ---------- Clients view: card grid ---------- */
