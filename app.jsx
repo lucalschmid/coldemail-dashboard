@@ -83,25 +83,64 @@ function campaignSummaryCSV(c, name) {
 // Phase 1: Goals & Targets — module-level constants and helpers
 // ============================================================
 
-// Default values shown in the Assumptions section the first time a user opens
-// the Goals page. Percentages are stored as 0-100 (UI-native); converted to
-// fractions inside computeRequirements when the math needs them.
+// Default values shown the first time a user opens the Goals page.
+// Percentages are stored as 0-100 (UI-native); converted to fractions inside
+// computeRequirements when the math needs them.
+//
+// Note on what's manual vs auto: email reply rate, daily sends, monthly calls
+// and positive reply rate are all pulled live from the Instantly campaign data
+// that this dashboard already has — they override these defaults at render
+// time. The values here are only used as fallbacks when no Instantly data is
+// available (e.g. fresh install, or the LinkedIn analogues which stay manual
+// until Phase 2 wires HeyReach).
 const DEFAULT_ASSUMPTIONS = {
+  // Business model (manual; Phase 1b connects Google Sheets)
   currentMRR: 10000,
+  activeClients: 4,
+  monthlyChurnRate: 5,        // % MRR lost per month
   avgACV: 3000,
   avgClientStayMonths: 12,
-  activeClients: 4,
-  closeRate: 30,
-  showUpRate: 70,
-  offerRate: 50,
-  bookingRate: 40,
-  positiveReplyRate: 30,
-  emailReplyRate: 1,
-  emailDailySends: 1000,
-  emailMonthlyCalls: 5,
+  closeRate: 30,              // offers → clients
+  showUpRate: 70,             // calls booked → calls done
+  offerRate: 50,              // calls done → offers
+  // Email channel — booking rate stays manual (CRM-derived). The rest get
+  // overridden by live Instantly numbers at render time.
+  emailBookingRate: 50,           // positive replies → calls booked
+  emailReplyRate: 1,              // fallback only — overridden live
+  emailDailySends: 1000,          // fallback only — overridden live
+  emailMonthlyCalls: 5,           // fallback only — overridden live
+  emailPositiveReplyRate: 30,     // fallback only — overridden live
+  // LinkedIn channel (all manual until Phase 2 wires HeyReach)
   linkedInAccounts: 6,
   linkedInCallsPerAccountPerMonth: 4,
   linkedInMonthlyCalls: 8,
+  linkedInBookingRate: 50,
+  linkedInPositiveReplyRate: 30,
+};
+
+// Benchmarks used for bottleneck detection. The weakest step is whichever
+// funnel ratio has the lowest (current / benchmark) ratio. Numbers chosen
+// for B2B cold outreach / agency context; user can disagree and override
+// any assumption value to shift their relative position.
+const BENCHMARKS = {
+  emailReplyRate: 1.5,
+  positiveReplyRate: 30,
+  bookingRate: 50,
+  showUpRate: 70,
+  offerRate: 50,
+  closeRate: 35,
+  monthlyChurnRate: 5,        // LOWER is better — inverted comparison
+};
+
+// One recommendation per bottleneck step. Concrete, channel-aware language.
+const RECOMMENDATIONS = {
+  emailReplyRate:        'Tighten ICP filters, A/B test subject lines, or shorten the first email. Reply rate is your cheapest lever.',
+  positiveReplyRate:     'Replies aren’t qualified enough. Refine your offer or your ICP — you’re getting attention but not from buyers.',
+  bookingRate:           'Positive replies aren’t converting to calls. Send Calendly links faster, follow up within 2 hours, or pre-qualify in the reply itself.',
+  showUpRate:            'Calls aren’t getting taken. Reduce time between booking and call, add SMS reminders, or warm the lead with a quick voice note.',
+  offerRate:             'Discovery calls aren’t generating offers. Tighten your discovery framework — you should know in 20 min if there’s a fit.',
+  closeRate:             'Offers aren’t closing. Stress-test pricing, contract structure, and the proposal format. Ask 3 lost prospects why.',
+  monthlyChurnRate:      'Churn is eating your growth. Diagnose root cause (onboarding, value delivery, pricing) and fix it before scaling outreach.',
 };
 
 const GOAL_TYPES = [
@@ -149,8 +188,12 @@ function lastNDates(n) {
 }
 
 // Reverse-engineer required monthly volumes from a goal + the assumptions.
+// `live` is an object of metrics auto-pulled from the existing Instantly data
+// (e.g. live.emailReplyRate); when present, live numbers override the manual
+// fallback for the corresponding email assumption.
+//
 // Returns null when the goal lacks a deadline (can't compute pace).
-function computeRequirements(goal, A) {
+function computeRequirements(goal, A, live) {
   if (!goal.deadline) return null;
   const deadline = new Date(goal.deadline + 'T23:59:59');
   const now = new Date();
@@ -160,28 +203,56 @@ function computeRequirements(goal, A) {
   const monthsRemaining = daysRemaining / 30.4375;
   const deadlinePassed = deadline < now;
 
-  // Gap = how much progress is left
+  // Resolve the actual numbers used in math: live data wins over the manual
+  // assumption when both exist. Email metrics that come from Instantly are
+  // listed under `live`; LinkedIn analogues stay manual until Phase 2.
+  const resolved = {
+    emailReplyRate:         (live && live.emailReplyRate != null)         ? live.emailReplyRate         : A.emailReplyRate,
+    emailDailySends:        (live && live.emailDailySends != null)        ? live.emailDailySends        : A.emailDailySends,
+    emailMonthlyCalls:      (live && live.emailMonthlyCalls != null)      ? live.emailMonthlyCalls      : A.emailMonthlyCalls,
+    emailPositiveReplyRate: (live && live.emailPositiveReplyRate != null) ? live.emailPositiveReplyRate : A.emailPositiveReplyRate,
+  };
+
+  // MRR drag from churn. Compounding loss is tricky to model in closed form;
+  // we approximate with the period's average MRR — close enough for a target
+  // page, conservative-leaning (slightly overestimates required gross growth).
+  const churn = (A.monthlyChurnRate || 0) / 100;
+  const startMRR = A.currentMRR || 0;
+  const targetMRR = goal.type === 'mrr' ? goal.value : startMRR;
+  const avgMRR = (startMRR + targetMRR) / 2;
+  const monthlyChurnDrag = avgMRR * churn;
+
+  // Gap (positive = still to do; 0 = already met)
   let gap;
-  if (goal.type === 'mrr')          gap = goal.value - (A.currentMRR || 0);
+  if (goal.type === 'mrr')          gap = goal.value - startMRR;
   else if (goal.type === 'clients') gap = goal.value - (A.activeClients || 0);
   else                              gap = goal.value;
-  if (gap < 0) gap = 0; // already met
+  if (gap < 0) gap = 0;
 
+  // For MRR goals, required gross new MRR per month must cover the gap PLUS
+  // the monthly churn drag. Other goal types ignore churn at this layer.
   const safe = (num, den) => (den > 0 ? num / den : null);
-  const reqMonth = safe(gap, monthsRemaining);
-  const reqWeek  = safe(gap, weeksRemaining);
-  const reqDay   = safe(gap, daysRemaining);
+  const requiredGrossNewMRRPerMonth = goal.type === 'mrr' && monthsRemaining > 0
+    ? gap / monthsRemaining + monthlyChurnDrag
+    : null;
+
+  const reqMonth = goal.type === 'mrr'
+    ? requiredGrossNewMRRPerMonth
+    : safe(gap, monthsRemaining);
+  const reqWeek  = reqMonth != null ? reqMonth / 4.345 : null;
+  const reqDay   = reqMonth != null ? reqMonth / 30.4375 : null;
 
   let funnel = null;
   const goalType = GOAL_TYPES.find(t => t.key === goal.type);
   if (goalType && goalType.funnel && reqMonth != null) {
-    // Convert percentage inputs to fractions
-    const close  = (A.closeRate || 0) / 100;
-    const offer  = (A.offerRate || 0) / 100;
-    const show   = (A.showUpRate || 0) / 100;
-    const book   = (A.bookingRate || 0) / 100;
-    const prr    = (A.positiveReplyRate || 0) / 100;
-    const reply  = (A.emailReplyRate || 0) / 100;
+    const close = (A.closeRate || 0) / 100;
+    const offer = (A.offerRate || 0) / 100;
+    const show  = (A.showUpRate || 0) / 100;
+    const ebook = (A.emailBookingRate || 0) / 100;
+    const eprr  = (resolved.emailPositiveReplyRate || 0) / 100;
+    const ereply = (resolved.emailReplyRate || 0) / 100;
+    const lbook = (A.linkedInBookingRate || 0) / 100;
+    const lprr  = (A.linkedInPositiveReplyRate || 0) / 100;
 
     let newMRR = null, clients = null, offers = null, callsDone = null, callsBooked = null;
 
@@ -204,20 +275,21 @@ function computeRequirements(goal, A) {
       newMRR      = clients     != null ? clients     * (A.avgACV || 0) : null;
     }
 
-    const positiveReplies = safe(callsBooked, book);
-    const totalReplies    = safe(positiveReplies, prr);
-    const emailsTotalIfAllFromEmail = safe(totalReplies, reply);
-
     // Channel split: LinkedIn covers its current pace, email fills the gap.
     const linkedInCalls = A.linkedInMonthlyCalls || 0;
     const emailCallsNeeded = Math.max(0, (callsBooked || 0) - linkedInCalls);
-    const emailPositive    = safe(emailCallsNeeded, book);
-    const emailTotal       = safe(emailPositive, prr);
-    const emailSendsNeeded = safe(emailTotal, reply);
+    const emailPositiveNeeded = safe(emailCallsNeeded, ebook);
+    const emailTotalReplies   = safe(emailPositiveNeeded, eprr);
+    const emailSendsNeeded    = safe(emailTotalReplies, ereply);
+
+    // For the funnel-step display we use email rates by default (the more
+    // common bottleneck), but also expose LinkedIn equivalents for reference.
+    const positiveReplies = emailPositiveNeeded;
+    const totalReplies    = emailTotalReplies;
 
     funnel = {
       newMRR, clients, offers, callsDone, callsBooked,
-      positiveReplies, totalReplies, emailsTotalIfAllFromEmail,
+      positiveReplies, totalReplies,
       linkedInCalls, emailCallsNeeded, emailSendsNeeded,
     };
   }
@@ -226,8 +298,42 @@ function computeRequirements(goal, A) {
     deadlinePassed,
     daysRemaining, weeksRemaining, monthsRemaining,
     gap, reqMonth, reqWeek, reqDay,
+    monthlyChurnDrag,
+    requiredGrossNewMRRPerMonth,
     funnel,
+    resolved,
   };
+}
+
+// Identify the funnel step that's furthest below its benchmark.
+// Returns { stepKey, current, benchmark, ratio, label, recommendation } or null
+// if no step is below benchmark.
+function detectBottleneck(A, live) {
+  const resolved = {
+    emailReplyRate:         live?.emailReplyRate         ?? A.emailReplyRate,
+    emailPositiveReplyRate: live?.emailPositiveReplyRate ?? A.emailPositiveReplyRate,
+  };
+  const candidates = [
+    { key: 'emailReplyRate',     label: 'Email reply rate',     current: resolved.emailReplyRate,         benchmark: BENCHMARKS.emailReplyRate,     inverted: false },
+    { key: 'positiveReplyRate',  label: 'Positive reply rate',  current: resolved.emailPositiveReplyRate, benchmark: BENCHMARKS.positiveReplyRate,  inverted: false },
+    { key: 'bookingRate',        label: 'Booking rate',         current: A.emailBookingRate,              benchmark: BENCHMARKS.bookingRate,        inverted: false },
+    { key: 'showUpRate',         label: 'Show-up rate',         current: A.showUpRate,                    benchmark: BENCHMARKS.showUpRate,         inverted: false },
+    { key: 'offerRate',          label: 'Offer rate',           current: A.offerRate,                     benchmark: BENCHMARKS.offerRate,          inverted: false },
+    { key: 'closeRate',          label: 'Close rate',           current: A.closeRate,                     benchmark: BENCHMARKS.closeRate,          inverted: false },
+    { key: 'monthlyChurnRate',   label: 'Monthly churn',        current: A.monthlyChurnRate,              benchmark: BENCHMARKS.monthlyChurnRate,   inverted: true },
+  ];
+  let worst = null;
+  for (const c of candidates) {
+    if (!isFinite(c.current) || c.benchmark <= 0) continue;
+    // For inverted metrics (churn), lower is better. Ratio = benchmark/current
+    // so values above benchmark produce a low ratio (worse).
+    const ratio = c.inverted ? (c.benchmark / Math.max(c.current, 0.01)) : (c.current / c.benchmark);
+    if (ratio >= 1) continue; // at or above benchmark — fine
+    if (!worst || ratio < worst.ratio) {
+      worst = { ...c, ratio, recommendation: RECOMMENDATIONS[c.key] };
+    }
+  }
+  return worst;
 }
 
 // Pace color from actual / required. 'green' if at/over, 'yellow' within 20%
@@ -368,36 +474,14 @@ function App() {
   });
   useEffect(() => { try { localStorage.setItem('csd:assumptions:v1', JSON.stringify(assumptions)); } catch (e) {} }, [assumptions]);
 
-  const [actuals, setActuals] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('csd:actuals:v1') || 'null');
-      if (stored) return stored;
-    } catch (e) {}
-    return {
-      today: { callsBooked: 0, emailsSent: 0, date: todayISO() },
-      week:  { callsBooked: 0, emailsSent: 0, weekKey: isoWeekKey(new Date()) },
-      month: { callsBooked: 0, emailsSent: 0, monthKey: monthKeyFor(new Date()) },
-    };
-  });
-  useEffect(() => { try { localStorage.setItem('csd:actuals:v1', JSON.stringify(actuals)); } catch (e) {} }, [actuals]);
-
-  const [paceHistory, setPaceHistory] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('csd:pace-history:v1') || '{}'); } catch (e) { return {}; }
-  });
-  useEffect(() => { try { localStorage.setItem('csd:pace-history:v1', JSON.stringify(paceHistory)); } catch (e) {} }, [paceHistory]);
-
-  // Whenever today's actuals are edited, snapshot the daily numbers into the
-  // pace-history map (keyed by date). Builds up a real series over time so the
-  // 28-day sparkline in the Pace check section has real data.
+  // Phase 1 redesign: dropped manual Pace Check (actuals + 28-day history).
+  // Clean up legacy localStorage keys on mount so they don't sit around stale.
   useEffect(() => {
-    if (!actuals.today.date) return;
-    setPaceHistory(prev => {
-      const cur = prev[actuals.today.date];
-      const next = { callsBooked: actuals.today.callsBooked, emailsSent: actuals.today.emailsSent };
-      if (cur && cur.callsBooked === next.callsBooked && cur.emailsSent === next.emailsSent) return prev;
-      return { ...prev, [actuals.today.date]: next };
-    });
-  }, [actuals.today.callsBooked, actuals.today.emailsSent, actuals.today.date]);
+    try {
+      localStorage.removeItem('csd:actuals:v1');
+      localStorage.removeItem('csd:pace-history:v1');
+    } catch (e) {}
+  }, []);
 
   // Inbox Analytics
   const [analyticsApiKey, setAnalyticsApiKey] = useState(() => {
@@ -580,6 +664,25 @@ function App() {
   }, [derived, clientFilter, statusFilter]);
 
   const totals = useMemo(() => window.CSD.aggregate(filteredByClient), [filteredByClient]);
+
+  // Goals page wants the unfiltered email picture (it doesn't care which
+  // client chip is selected on Campaigns). Compute live metrics from all
+  // active derived campaigns and pipe them into the Goals math.
+  const liveEmail = useMemo(() => {
+    const activeOnly = derived.filter(c => c.status === 'Active');
+    if (activeOnly.length === 0) return null;
+    const agg = window.CSD.aggregate(activeOnly);
+    const bookings7d = activeOnly.reduce((s, c) => s + (c.bookings7d || 0), 0);
+    return {
+      // Convert fractions back to percentages for UI-native consumption
+      emailReplyRate:         agg.replyRate != null ? agg.replyRate * 100 : null,
+      emailPositiveReplyRate: agg.prr       != null ? agg.prr       * 100 : null,
+      // 7d sends → daily send volume (rounded)
+      emailDailySends:        agg.sends > 0 ? Math.round(agg.sends / 7) : null,
+      // 7d bookings → monthly equivalent (4.345 weeks/month)
+      emailMonthlyCalls:      bookings7d > 0 ? Math.round(bookings7d * 4.345) : null,
+    };
+  }, [derived]);
   const groups = useMemo(() => window.CSD.groupByClient(filteredByClient), [filteredByClient]);
 
   const filteredGroups = useMemo(() => {
@@ -1959,27 +2062,8 @@ function App() {
 
   const updateAssumption = (key, val) => setAssumptions(prev => ({ ...prev, [key]: val }));
   const resetAssumptions = () => {
-    if (!window.confirm('Reset all assumptions to defaults? Your goals and actuals are untouched.')) return;
+    if (!window.confirm('Reset all manual inputs to defaults? Your goals stay.')) return;
     setAssumptions({ ...DEFAULT_ASSUMPTIONS });
-  };
-
-  // Snap today/week/month inputs to the current period when stale
-  const todayIso = todayISO();
-  const curWeekKey = isoWeekKey(new Date());
-  const curMonthKey = monthKeyFor(new Date());
-  const setActualField = (period, field, val) => {
-    setActuals(prev => {
-      const cur = prev[period] || {};
-      // If the period rolled over, reset other fields to 0 before applying the new value
-      const stale = period === 'today' ? cur.date !== todayIso
-                  : period === 'week'  ? cur.weekKey !== curWeekKey
-                                       : cur.monthKey !== curMonthKey;
-      const base = stale ? { callsBooked: 0, emailsSent: 0 } : cur;
-      const stamp = period === 'today' ? { date: todayIso }
-                  : period === 'week'  ? { weekKey: curWeekKey }
-                                       : { monthKey: curMonthKey };
-      return { ...prev, [period]: { ...base, [field]: val, ...stamp } };
-    });
   };
 
   // Reusable form-field builders
@@ -2067,210 +2151,205 @@ function App() {
                   React.createElement('path', { d: 'M10 11v6M14 11v6' }))));
           })));
 
-  // Section 2: Assumptions
-  const ASSUMPTION_GROUPS = [
-    {
-      title: 'Business',
-      fields: [
-        { key: 'currentMRR',          label: 'Current MRR',                    unit: '€',  step: 100,  helper: 'Recurring monthly revenue today.' },
-        { key: 'avgACV',              label: 'Average ACV / month',            unit: '€',  step: 50,   helper: 'Average client revenue per month.' },
-        { key: 'avgClientStayMonths', label: 'Average client stay',            unit: 'mo', step: 1,    helper: 'How long the average client stays.' },
-        { key: 'activeClients',       label: 'Active clients',                 unit: '#',  step: 1,    helper: 'Current paying client count.' },
-      ],
-    },
-    {
-      title: 'Sales funnel',
-      fields: [
-        { key: 'closeRate',         label: 'Close rate',          unit: '%', step: 1, helper: 'Offers made → clients closed.' },
-        { key: 'offerRate',         label: 'Offer rate',          unit: '%', step: 1, helper: 'Calls done → offers made.' },
-        { key: 'showUpRate',        label: 'Show-up rate',        unit: '%', step: 1, helper: 'Calls booked → calls done.' },
-        { key: 'bookingRate',       label: 'Booking rate',        unit: '%', step: 1, helper: 'Positive replies → calls booked.' },
-        { key: 'positiveReplyRate', label: 'Positive reply rate', unit: '%', step: 1, helper: 'Total replies → positive replies.' },
-      ],
-    },
-    {
-      title: 'Email channel',
-      fields: [
-        { key: 'emailReplyRate',     label: 'Reply rate',                unit: '%', step: 0.1, helper: 'Replies ÷ unique leads contacted.' },
-        { key: 'emailDailySends',    label: 'Current daily volume',      unit: '#', step: 50,  helper: 'Messages sent per day across all campaigns.' },
-        { key: 'emailMonthlyCalls',  label: 'Calls booked / month',      unit: '#', step: 1,   helper: 'Email-attributed booked calls last 30 days.' },
-      ],
-    },
-    {
-      title: 'LinkedIn channel',
-      fields: [
-        { key: 'linkedInAccounts',                 label: 'Active accounts',          unit: '#', step: 1, helper: 'Number of LinkedIn senders running outbound.' },
-        { key: 'linkedInCallsPerAccountPerMonth',  label: 'Calls / account / month',  unit: '#', step: 1, helper: 'Average calls each account books per month.' },
-        { key: 'linkedInMonthlyCalls',             label: 'Calls booked / month',     unit: '#', step: 1, helper: 'LinkedIn-attributed booked calls last 30 days.' },
-      ],
-    },
+  // ---------- Field configs ----------
+  // Each entry: key + label + unit + step + helper. `live` flag = pulled from
+  // Instantly automatically; we render the live value (read-only when present)
+  // with a small "Live · Instantly" badge.
+  const BUSINESS_MODEL_FIELDS = [
+    { key: 'currentMRR',          label: 'Current MRR',            unit: '€',  step: 100, helper: 'Recurring monthly revenue today.',          source: 'manual' },
+    { key: 'activeClients',       label: 'Active clients',         unit: '#',  step: 1,   helper: 'Current paying client count.',              source: 'manual' },
+    { key: 'monthlyChurnRate',    label: 'Monthly churn',          unit: '%',  step: 0.5, helper: 'MRR lost per month (lower is better).',     source: 'manual' },
+    { key: 'avgACV',              label: 'Average ACV / month',    unit: '€',  step: 50,  helper: 'Average client revenue per month.',         source: 'manual' },
+    { key: 'avgClientStayMonths', label: 'Average client stay',    unit: 'mo', step: 1,   helper: 'How long the average client stays.',        source: 'manual' },
+    { key: 'closeRate',           label: 'Close rate',             unit: '%',  step: 1,   helper: 'Offers made → clients closed.',             source: 'manual' },
+    { key: 'showUpRate',          label: 'Show-up rate',           unit: '%',  step: 1,   helper: 'Calls booked → calls done.',                source: 'manual' },
+    { key: 'offerRate',           label: 'Offer rate',             unit: '%',  step: 1,   helper: 'Calls done → offers made.',                 source: 'manual' },
+  ];
+  const EMAIL_FIELDS = [
+    { key: 'emailReplyRate',         label: 'Reply rate',            unit: '%', step: 0.1, helper: 'Live from Instantly · replies ÷ unique leads.', source: 'live'   },
+    { key: 'emailPositiveReplyRate', label: 'Positive reply rate',   unit: '%', step: 0.1, helper: 'Live from Instantly · positive ÷ replies.',     source: 'live'   },
+    { key: 'emailBookingRate',       label: 'Booking rate',          unit: '%', step: 1,   helper: 'Positive replies → calls booked.',              source: 'manual' },
+    { key: 'emailDailySends',        label: 'Daily send volume',     unit: '#', step: 50,  helper: 'Live from Instantly · messages / day.',         source: 'live'   },
+    { key: 'emailMonthlyCalls',      label: 'Calls booked / month',  unit: '#', step: 1,   helper: 'Live from Instantly · last 7d × 4.3.',          source: 'live'   },
+  ];
+  const LINKEDIN_FIELDS = [
+    { key: 'linkedInAccounts',                label: 'Active accounts',         unit: '#', step: 1,   helper: 'LinkedIn senders running outbound.',     source: 'manual' },
+    { key: 'linkedInCallsPerAccountPerMonth', label: 'Calls / account / month', unit: '#', step: 1,   helper: 'Average per-account booked calls.',      source: 'manual' },
+    { key: 'linkedInPositiveReplyRate',       label: 'Positive reply rate',     unit: '%', step: 1,   helper: 'Positive ÷ replies (Phase 2: HeyReach).', source: 'manual' },
+    { key: 'linkedInBookingRate',             label: 'Booking rate',            unit: '%', step: 1,   helper: 'Positive replies → calls booked.',       source: 'manual' },
+    { key: 'linkedInMonthlyCalls',            label: 'Calls booked / month',    unit: '#', step: 1,   helper: 'LinkedIn-attributed booked calls.',      source: 'manual' },
   ];
 
-  const assumptionsSection = React.createElement('section', { className: 'csd-section-card' },
+  // Resolve a field's display value: live override beats stored assumption.
+  const resolveFieldValue = (key) => {
+    if (liveEmail && liveEmail[key] != null) return liveEmail[key];
+    return assumptions[key];
+  };
+
+  // Field renderer with source badge. Live values are read-only inputs (the
+  // numbers come from Instantly, editing them wouldn't change reality).
+  const renderField = (f) => {
+    const liveOverride = liveEmail && liveEmail[f.key] != null;
+    const isLive = f.source === 'live' && liveOverride;
+    const val = liveOverride ? liveEmail[f.key] : assumptions[f.key];
+    return React.createElement('div', { key: f.key, className: 'csd-assumption-field' + (isLive ? ' is-live' : '') },
+      React.createElement('label', null,
+        React.createElement('span', { className: 'csd-field-label-text' }, f.label),
+        React.createElement('span', { className: 'csd-assumption-unit' }, f.unit),
+        isLive && React.createElement('span', { className: 'csd-source-badge csd-source-live', title: 'Auto-pulled from your Instantly campaigns' }, 'Live'),
+        f.source === 'manual' && React.createElement('span', { className: 'csd-source-badge csd-source-manual', title: 'Manual — Phase 1b will auto-pull from Google Sheets' }, 'Manual')),
+      React.createElement('input', {
+        type: 'number',
+        className: 'csd-goal-input' + (isLive ? ' is-readonly' : ''),
+        value: val == null ? '' : (typeof val === 'number' ? +val.toFixed(2) : val),
+        step: f.step || 'any',
+        min: 0,
+        readOnly: isLive,
+        title: isLive ? 'Live value from Instantly — read-only' : undefined,
+        onChange: (e) => {
+          if (isLive) return;
+          const raw = e.target.value;
+          updateAssumption(f.key, raw === '' ? 0 : Number(raw));
+        },
+      }),
+      React.createElement('div', { className: 'csd-assumption-helper' }, f.helper));
+  };
+
+  // ---------- Section: Goal Status Header (per active goal) ----------
+  // The thing you actually look at. For each active goal: how far behind/ahead,
+  // what's the bottleneck, what's the recommended action.
+  const goalStatusSection = activeGoals.length === 0
+    ? null
+    : React.createElement('div', { className: 'csd-goal-status-list' },
+        activeGoals.map(g => {
+          const req = computeRequirements(g, assumptions, liveEmail);
+          const goalType = GOAL_TYPES.find(t => t.key === g.type) || GOAL_TYPES[0];
+          if (!req) {
+            return React.createElement('section', { key: g.id, className: 'csd-goal-status-card' },
+              React.createElement('div', { className: 'csd-goal-status-title' }, g.name || '(untitled goal)'),
+              React.createElement('div', { className: 'csd-goal-status-sub' }, 'Set a deadline in the goal row to see required pace.'));
+          }
+          const fmtValue = (n) => goalType.unitPrefix === '€' ? fmtEUR(n) : (fmtIntCompact(n) + (goalType.unitSuffix || ''));
+          const bottleneck = detectBottleneck(assumptions, liveEmail);
+          return React.createElement('section', { key: g.id, className: 'csd-goal-status-card' },
+            React.createElement('div', { className: 'csd-goal-status-head' },
+              React.createElement('div', null,
+                React.createElement('div', { className: 'csd-goal-status-title' }, g.name || '(untitled goal)'),
+                React.createElement('div', { className: 'csd-goal-status-sub' },
+                  req.deadlinePassed
+                    ? 'Deadline passed'
+                    : ('Gap ' + fmtValue(req.gap) + ' · ' + req.daysRemaining + ' day' + (req.daysRemaining === 1 ? '' : 's') + ' left'))),
+              React.createElement('div', { className: 'csd-goal-status-pace' },
+                React.createElement('div', { className: 'csd-goal-status-pace-v' }, fmtValue(req.reqMonth)),
+                React.createElement('div', { className: 'csd-goal-status-pace-l' }, 'needed / month'))),
+            // Bottleneck callout
+            bottleneck
+              ? React.createElement('div', { className: 'csd-bottleneck' },
+                  React.createElement('div', { className: 'csd-bottleneck-head' },
+                    React.createElement('span', { className: 'csd-bottleneck-icon' }, '◆'),
+                    React.createElement('span', { className: 'csd-bottleneck-label' }, 'Bottleneck'),
+                    React.createElement('span', { className: 'csd-bottleneck-step' }, bottleneck.label)),
+                  React.createElement('div', { className: 'csd-bottleneck-detail' },
+                    'Currently ',
+                    React.createElement('strong', null, (typeof bottleneck.current === 'number' ? bottleneck.current.toFixed(1) : '—') + '%'),
+                    ' · benchmark ',
+                    React.createElement('strong', null, bottleneck.benchmark + '%'),
+                    ' · gap of ',
+                    React.createElement('strong', null, Math.round((1 - bottleneck.ratio) * 100) + '%')),
+                  React.createElement('div', { className: 'csd-bottleneck-rec' },
+                    React.createElement('span', { className: 'csd-bottleneck-rec-arrow' }, '→ '),
+                    bottleneck.recommendation))
+              : React.createElement('div', { className: 'csd-bottleneck csd-bottleneck-ok' },
+                  React.createElement('span', { className: 'csd-bottleneck-icon' }, '✓'),
+                  ' Every funnel step is at or above benchmark. Focus on volume.'),
+            // For MRR goals, show the churn drag breakdown
+            g.type === 'mrr' && req.monthlyChurnDrag > 0 && React.createElement('div', { className: 'csd-status-churn-note' },
+              'Includes ', fmtEUR(req.monthlyChurnDrag), '/month to replace churn (',
+              (assumptions.monthlyChurnRate || 0).toFixed(1), '% of avg MRR over the period).'));
+        }));
+
+  // ---------- Section: Funnel Visual ----------
+  // Show the working-backward chain with the weakest step highlighted.
+  const funnelSection = activeGoals.length === 0
+    ? null
+    : (() => {
+        const firstFunnelGoal = activeGoals.find(g => {
+          const t = GOAL_TYPES.find(x => x.key === g.type);
+          return t && t.funnel;
+        });
+        if (!firstFunnelGoal) return null;
+        const req = computeRequirements(firstFunnelGoal, assumptions, liveEmail);
+        if (!req || !req.funnel) return null;
+        const bottleneck = detectBottleneck(assumptions, liveEmail);
+        const isBottleneckStep = (stepKey) => bottleneck && bottleneck.key === stepKey;
+        const steps = [
+          { key: 'totalReplies',    label: 'Total replies',    value: fmtInt(req.funnel.totalReplies),    rateKey: 'emailReplyRate' },
+          { key: 'positiveReplies', label: 'Positive replies', value: fmtInt(req.funnel.positiveReplies), rateKey: 'positiveReplyRate' },
+          { key: 'callsBooked',     label: 'Calls booked',     value: fmtInt(req.funnel.callsBooked),     rateKey: 'bookingRate' },
+          { key: 'callsDone',       label: 'Calls done',       value: fmtInt(req.funnel.callsDone),       rateKey: 'showUpRate' },
+          { key: 'offers',          label: 'Offers',           value: fmtInt(req.funnel.offers),          rateKey: 'offerRate' },
+          { key: 'clients',         label: 'New clients',      value: fmtInt(req.funnel.clients),         rateKey: 'closeRate' },
+          { key: 'newMRR',          label: 'New MRR',          value: fmtEUR(req.funnel.newMRR),          rateKey: null },
+        ];
+        return React.createElement('section', { className: 'csd-section-card' },
+          React.createElement('div', { className: 'csd-section-head' },
+            React.createElement('h2', { className: 'csd-section-title' }, 'Funnel · monthly volumes needed'),
+            React.createElement('span', { className: 'csd-section-sub' },
+              'For "' + (firstFunnelGoal.name || 'untitled goal') + '". Red step = bottleneck.')),
+          React.createElement('div', { className: 'csd-funnel-visual' },
+            steps.map((s, i) => React.createElement('div', {
+              key: s.key,
+              className: 'csd-funnel-vstep' + (isBottleneckStep(s.rateKey) ? ' is-bottleneck' : ''),
+            },
+              React.createElement('div', { className: 'csd-funnel-vstep-l' }, s.label),
+              React.createElement('div', { className: 'csd-funnel-vstep-v' }, s.value),
+              i < steps.length - 1 && React.createElement('div', { className: 'csd-funnel-vstep-arrow' }, '↓')))),
+          React.createElement('div', { className: 'csd-funnel-split' },
+            React.createElement('div', { className: 'csd-funnel-split-row' },
+              React.createElement('span', { className: 'l' }, 'LinkedIn contributes (current)'),
+              React.createElement('span', { className: 'v' }, fmtInt(req.funnel.linkedInCalls), ' calls / month')),
+            React.createElement('div', { className: 'csd-funnel-split-row' },
+              React.createElement('span', { className: 'l' }, 'Email needs to deliver'),
+              React.createElement('span', { className: 'v' }, fmtInt(req.funnel.emailCallsNeeded), ' calls / month')),
+            React.createElement('div', { className: 'csd-funnel-split-row csd-funnel-split-emph' },
+              React.createElement('span', { className: 'l' }, '⇒ Email send volume needed / month'),
+              React.createElement('span', { className: 'v' }, fmtIntCompact(req.funnel.emailSendsNeeded)))));
+      })();
+
+  // ---------- Section: Business Model ----------
+  const businessModelSection = React.createElement('section', { className: 'csd-section-card' },
     React.createElement('div', { className: 'csd-section-head' },
-      React.createElement('h2', { className: 'csd-section-title' }, 'Assumptions'),
-      React.createElement('span', { className: 'csd-section-sub' }, 'These drive every calculation below. Edit any value to see results update.')),
-    React.createElement('div', { className: 'csd-assumption-groups' },
-      ASSUMPTION_GROUPS.map(group => React.createElement('div', { key: group.title, className: 'csd-assumption-group' },
-        React.createElement('h3', { className: 'csd-assumption-group-title' }, group.title),
-        React.createElement('div', { className: 'csd-assumption-grid' },
-          group.fields.map(f => React.createElement('div', { key: f.key, className: 'csd-assumption-field' },
-            React.createElement('label', null, f.label,
-              React.createElement('span', { className: 'csd-assumption-unit' }, f.unit)),
-            numField(assumptions[f.key], v => updateAssumption(f.key, v), { step: f.step, min: 0 }),
-            React.createElement('div', { className: 'csd-assumption-helper' }, f.helper))))))),
+      React.createElement('h2', { className: 'csd-section-title' }, 'Business model'),
+      React.createElement('span', { className: 'csd-section-sub' }, 'Numbers that rarely change. Edit any value; auto-saves.')),
+    React.createElement('div', { className: 'csd-assumption-grid csd-assumption-grid-wide' },
+      BUSINESS_MODEL_FIELDS.map(renderField)),
     React.createElement('div', { className: 'csd-section-footer' },
-      React.createElement('button', { className: 'csd-ghost-btn', onClick: resetAssumptions }, 'Reset to defaults')));
+      React.createElement('button', { className: 'csd-ghost-btn', onClick: resetAssumptions }, 'Reset all to defaults')));
 
-  // Section 3: Calculated requirements
-  const requirementsSection = React.createElement('section', { className: 'csd-section-card' },
+  // ---------- Section: Email channel ----------
+  const emailSection = React.createElement('section', { className: 'csd-section-card' },
     React.createElement('div', { className: 'csd-section-head' },
-      React.createElement('h2', { className: 'csd-section-title' }, 'Calculated requirements'),
+      React.createElement('h2', { className: 'csd-section-title' }, 'Email channel'),
       React.createElement('span', { className: 'csd-section-sub' },
-        activeGoals.length === 0 ? 'Activate a goal above to see what it takes.' : 'Auto-recalculated from your goals and assumptions.')),
-    activeGoals.length === 0
-      ? React.createElement('div', { className: 'csd-section-empty' }, 'No active goals.')
-      : React.createElement('div', { className: 'csd-req-cards' },
-          activeGoals.map(g => {
-            const req = computeRequirements(g, assumptions);
-            const goalType = GOAL_TYPES.find(t => t.key === g.type) || GOAL_TYPES[0];
-            const isExpanded = expandedReqGoalId === g.id;
-            if (!req) {
-              return React.createElement('div', { key: g.id, className: 'csd-req-card' },
-                React.createElement('div', { className: 'csd-req-card-head' },
-                  React.createElement('div', { className: 'csd-req-card-title' }, g.name || '(untitled goal)'),
-                  React.createElement('span', { className: 'csd-req-card-sub' }, 'Set a deadline to calculate pace.')));
-            }
-            const fmtValue = (n) => goalType.unitPrefix === '€' ? fmtEUR(n) : (fmtIntCompact(n) + (goalType.unitSuffix || ''));
-            return React.createElement('div', { key: g.id, className: 'csd-req-card' },
-              React.createElement('div', { className: 'csd-req-card-head' },
-                React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-                  React.createElement('div', { className: 'csd-req-card-title' }, g.name || '(untitled goal)'),
-                  React.createElement('div', { className: 'csd-req-card-sub' },
-                    req.deadlinePassed ? 'Deadline passed' :
-                    (req.daysRemaining + ' day' + (req.daysRemaining === 1 ? '' : 's') + ' remaining · gap ' + fmtValue(req.gap)))),
-                goalType.funnel && React.createElement('button', {
-                  className: 'csd-ghost-btn csd-req-expand-btn',
-                  onClick: () => setExpandedReqGoalId(isExpanded ? null : g.id),
-                }, isExpanded ? 'Hide funnel' : 'Show funnel')),
-              React.createElement('div', { className: 'csd-req-stats' },
-                React.createElement('div', { className: 'csd-req-stat' },
-                  React.createElement('div', { className: 'l' }, 'Per month'),
-                  React.createElement('div', { className: 'v' }, fmtValue(req.reqMonth))),
-                React.createElement('div', { className: 'csd-req-stat' },
-                  React.createElement('div', { className: 'l' }, 'Per week'),
-                  React.createElement('div', { className: 'v' }, fmtValue(req.reqWeek))),
-                React.createElement('div', { className: 'csd-req-stat' },
-                  React.createElement('div', { className: 'l' }, 'Per day'),
-                  React.createElement('div', { className: 'v' }, fmtValue(req.reqDay)))),
-              goalType.funnel && isExpanded && req.funnel && React.createElement('div', { className: 'csd-funnel' },
-                React.createElement('div', { className: 'csd-funnel-title' }, 'Monthly funnel (working backward)'),
-                React.createElement('ol', { className: 'csd-funnel-steps' },
-                  g.type === 'mrr' && React.createElement('li', null,
-                    React.createElement('span', { className: 'l' }, 'New MRR needed'),
-                    React.createElement('span', { className: 'v' }, fmtEUR(req.funnel.newMRR))),
-                  React.createElement('li', null,
-                    React.createElement('span', { className: 'l' }, 'New clients'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.clients))),
-                  React.createElement('li', null,
-                    React.createElement('span', { className: 'l' }, 'Offers made'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.offers))),
-                  React.createElement('li', null,
-                    React.createElement('span', { className: 'l' }, 'Calls done'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.callsDone))),
-                  React.createElement('li', null,
-                    React.createElement('span', { className: 'l' }, 'Calls booked'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.callsBooked))),
-                  React.createElement('li', null,
-                    React.createElement('span', { className: 'l' }, 'Positive replies'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.positiveReplies))),
-                  React.createElement('li', null,
-                    React.createElement('span', { className: 'l' }, 'Total replies'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.totalReplies)))),
-                React.createElement('div', { className: 'csd-funnel-split' },
-                  React.createElement('div', { className: 'csd-funnel-split-row' },
-                    React.createElement('span', { className: 'l' }, 'LinkedIn contributes'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.linkedInCalls), ' calls / month')),
-                  React.createElement('div', { className: 'csd-funnel-split-row' },
-                    React.createElement('span', { className: 'l' }, 'Email needs to deliver'),
-                    React.createElement('span', { className: 'v' }, fmtInt(req.funnel.emailCallsNeeded), ' calls / month')),
-                  React.createElement('div', { className: 'csd-funnel-split-row csd-funnel-split-emph' },
-                    React.createElement('span', { className: 'l' }, '⇒ Emails sent / month (email channel only)'),
-                    React.createElement('span', { className: 'v' }, fmtIntCompact(req.funnel.emailSendsNeeded))))));
-          })));
+        liveEmail ? 'Reply rate, daily volume, monthly calls and positive reply rate pull live from Instantly.' : 'No active campaigns — values fall back to manual defaults.')),
+    React.createElement('div', { className: 'csd-assumption-grid csd-assumption-grid-wide' },
+      EMAIL_FIELDS.map(renderField)));
 
-  // Section 4: Pace check
-  // For funnel goals, the operational metric is "calls booked". For each
-  // active funnel goal, we compute required calls per period and compare with
-  // today/week/month actuals. Pace history is a 28-day sparkline of daily
-  // calls-booked actuals.
-  const paceActualsRow = (period, label, dateNote) => React.createElement('div', { className: 'csd-pace-actual-row' },
-    React.createElement('div', { className: 'csd-pace-actual-period' },
-      React.createElement('div', { className: 'l' }, label),
-      dateNote && React.createElement('div', { className: 'd' }, dateNote)),
-    React.createElement('div', { className: 'csd-pace-actual-field' },
-      React.createElement('label', null, 'Calls booked'),
-      numField(actuals[period].callsBooked, v => setActualField(period, 'callsBooked', v), { min: 0, step: 1 })),
-    React.createElement('div', { className: 'csd-pace-actual-field' },
-      React.createElement('label', null, 'Emails sent'),
-      numField(actuals[period].emailsSent, v => setActualField(period, 'emailsSent', v), { min: 0, step: 50 })));
-
-  // Build 28-day sparkline data: calls booked per day. Most days will be 0
-  // until enough data accumulates.
-  const historyDates = lastNDates(28);
-  const historySeries = historyDates.map(d => (paceHistory[d] && paceHistory[d].callsBooked) || 0);
-
-  const paceSection = React.createElement('section', { className: 'csd-section-card' },
+  // ---------- Section: LinkedIn channel ----------
+  const linkedInSection = React.createElement('section', { className: 'csd-section-card' },
     React.createElement('div', { className: 'csd-section-head' },
-      React.createElement('h2', { className: 'csd-section-title' }, 'Pace check'),
-      React.createElement('span', { className: 'csd-section-sub' }, 'Enter what you actually hit. Indicators turn green when you’re on or ahead of pace.')),
-    React.createElement('div', { className: 'csd-pace-actuals' },
-      paceActualsRow('today', 'Today', todayIso),
-      paceActualsRow('week',  'This week', curWeekKey),
-      paceActualsRow('month', 'This month', curMonthKey)),
-    activeGoals.length === 0
-      ? React.createElement('div', { className: 'csd-section-empty' }, 'Activate a goal to see pace indicators.')
-      : React.createElement('div', { className: 'csd-pace-indicators' },
-          activeGoals.map(g => {
-            const req = computeRequirements(g, assumptions);
-            const goalType = GOAL_TYPES.find(t => t.key === g.type) || GOAL_TYPES[0];
-            if (!req || !goalType.funnel || !req.funnel) {
-              return React.createElement('div', { key: g.id, className: 'csd-pace-card' },
-                React.createElement('div', { className: 'csd-pace-card-title' }, g.name || '(untitled goal)'),
-                React.createElement('div', { className: 'csd-pace-card-empty' },
-                  !req ? 'Set a deadline to enable pace tracking.' : 'Pace tracking shown for MRR / clients / calls goals.'));
-            }
-            const reqMonth = req.funnel.callsBooked || 0;
-            const reqWeek  = reqMonth / 4.345;
-            const reqDay   = reqMonth / 30.4375;
-            const periods = [
-              { key: 'today', label: 'Today',      actual: actuals.today.callsBooked, required: reqDay },
-              { key: 'week',  label: 'This week',  actual: actuals.week.callsBooked,  required: reqWeek },
-              { key: 'month', label: 'This month', actual: actuals.month.callsBooked, required: reqMonth },
-            ];
-            return React.createElement('div', { key: g.id, className: 'csd-pace-card' },
-              React.createElement('div', { className: 'csd-pace-card-title' }, g.name || '(untitled goal)'),
-              React.createElement('div', { className: 'csd-pace-card-sub' }, 'Calls booked vs required pace'),
-              React.createElement('div', { className: 'csd-pace-grid' },
-                periods.map(p => {
-                  const color = paceColor(p.actual, p.required);
-                  return React.createElement('div', { key: p.key, className: 'csd-pace-cell pace-' + color },
-                    React.createElement('div', { className: 'csd-pace-cell-label' }, p.label),
-                    React.createElement('div', { className: 'csd-pace-cell-actual' }, fmtInt(p.actual || 0)),
-                    React.createElement('div', { className: 'csd-pace-cell-req' }, '/ ' + (p.required == null ? '—' : Math.round(p.required * 10) / 10) + ' req'));
-                })));
-          })),
-    React.createElement('div', { className: 'csd-pace-history' },
-      React.createElement('div', { className: 'csd-pace-history-head' },
-        React.createElement('span', { className: 'csd-pace-history-title' }, 'Calls booked · last 28 days'),
-        React.createElement('span', { className: 'csd-pace-history-sub' }, 'Auto-built from your daily actuals.')),
-      React.createElement(window.Sparkline, { data: historySeries, sev: 0, accent: true, width: 600, height: 60 })));
+      React.createElement('h2', { className: 'csd-section-title' }, 'LinkedIn channel'),
+      React.createElement('span', { className: 'csd-section-sub' }, 'Manual until Phase 2 wires HeyReach.')),
+    React.createElement('div', { className: 'csd-assumption-grid csd-assumption-grid-wide' },
+      LINKEDIN_FIELDS.map(renderField)));
 
   const goalsTargetsView = React.createElement('div', { className: 'csd-goals-page' },
     goalsSection,
-    assumptionsSection,
-    requirementsSection,
-    paceSection);
+    goalStatusSection,
+    funnelSection,
+    businessModelSection,
+    emailSection,
+    linkedInSection);
 
   let viewBody;
   if (activeNav === 'clients') viewBody = clientsView;
