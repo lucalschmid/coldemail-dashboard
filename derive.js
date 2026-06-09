@@ -91,6 +91,12 @@ window.CSD.derive = function derive(campaign, thresholds) {
     if (campaign.leadsLeft === 0 || runwayDays < thresholds.runwayCritical) runwaySev = 2;
     else if (runwayDays < thresholds.runwayWarning) runwaySev = 1;
   }
+  // Danger tier layered on top of critical: <=3 days remaining on an active
+  // campaign with leads still queued (or zero leads left, which is the most
+  // urgent case). Drives a louder visual in RunwayBar — same red, plus a
+  // pulse and a "!" badge — so these don't get lost in a list of criticals.
+  const runwayDanger = campaign.status === 'Active' &&
+    (campaign.leadsLeft === 0 || (isFinite(runwayDays) && runwayDays <= 3));
 
   // Staleness — only meaningful for lists with leads still available.
   // "Idle" = hasn't sent in N days while leads remain.
@@ -115,6 +121,7 @@ window.CSD.derive = function derive(campaign, thresholds) {
     replyRate,
     prrSev,
     runwaySev,
+    runwayDanger,
     staleSev,
     daysSinceLastSend,
     canRerun,

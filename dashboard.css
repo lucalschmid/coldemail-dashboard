@@ -520,7 +520,8 @@ html, body { margin: 0; padding: 0; }
 
 .csd-clientgroup-head {
   display: grid;
-  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 1fr 130px;
+  /* chev | name | sends/day | sends/week | sends/month | reply | PRR | leads left | pill */
+  grid-template-columns: 32px minmax(0, 240px) 1fr 1fr 1fr 1fr 1fr 1fr 130px;
   align-items: center;
   gap: 14px;
   padding: 14px 18px;
@@ -597,10 +598,6 @@ html, body { margin: 0; padding: 0; }
   margin-left: 4px;
   letter-spacing: 0;
 }
-.csd-clientgroup-head .stat-spark {
-  display: flex; align-items: center;
-}
-
 .csd-clientgroup-head .flag-pill {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 4px 10px;
@@ -727,7 +724,8 @@ html, body { margin: 0; padding: 0; }
 /* Column header strip inside open group */
 .csd-colstrip {
   display: grid;
-  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 130px;
+  /* gutter | campaign | sends 7d | reply rate | PRR | runway */
+  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr;
   align-items: center;
   gap: 14px;
   padding: 7px 18px;
@@ -752,7 +750,8 @@ html, body { margin: 0; padding: 0; }
 .csd-camprow {
   position: relative;
   display: grid;
-  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr 130px;
+  /* gutter | name | sends 7d | reply rate | PRR | runway */
+  grid-template-columns: 32px minmax(0, 280px) 1fr 1fr 1fr 1fr;
   align-items: center;
   gap: 14px;
   padding: 12px 18px;
@@ -899,6 +898,39 @@ html, body { margin: 0; padding: 0; }
 .csd-runway-bar.sev-2 .fill { background: var(--d-critical); }
 .csd-runway-bar.sev-1 .fill { background: var(--d-warning); }
 .csd-runway-bar.sev-0 .fill { background: var(--d-accent); }
+
+/* Danger tier: <=3 days remaining on an active campaign. Layered on top of
+   the sev-2 critical treatment — pulsing days label, pulsing fill, and a
+   compact "!" badge after the day count. Loud enough that you can spot a
+   row about to run dry from across the page. */
+.csd-runway-bar.is-danger .label .days {
+  color: var(--d-critical);
+  animation: csd-runway-pulse 1.4s ease-in-out infinite;
+}
+.csd-runway-bar.is-danger .fill {
+  background: var(--d-critical);
+  animation: csd-runway-pulse 1.4s ease-in-out infinite;
+}
+.csd-runway-bar.is-danger .danger-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: var(--d-critical);
+  color: var(--d-card-bg);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--sans);
+  line-height: 1;
+  vertical-align: middle;
+}
+@keyframes csd-runway-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
 
 /* Sparkline */
 .csd-spark { display: block; overflow: visible; color: var(--d-fg-2); }

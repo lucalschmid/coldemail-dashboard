@@ -43,14 +43,19 @@ function StatusDot({ status }) {
 // ---------- Runway bar ----------
 function RunwayBar({ campaign, compact }) {
   const sev = campaign.runwaySev;
+  // `runwayDanger` (≤3 days remaining, set in derive()) layers an even louder
+  // visual on top of the existing critical treatment — a pulse and a "danger"
+  // micro-label — to flag campaigns about to run out of leads imminently.
+  const danger = !!campaign.runwayDanger;
   const pct = campaign.totalLeads > 0
     ? Math.max(0, Math.min(100, (campaign.leadsLeft / campaign.totalLeads) * 100))
     : 0;
   const days = isFinite(campaign.runwayDays) ? campaign.runwayDays : null;
-  return React.createElement('div', { className: `csd-runway-bar sev-${sev}` },
+  return React.createElement('div', { className: `csd-runway-bar sev-${sev}` + (danger ? ' is-danger' : '') },
     React.createElement('div', { className: 'label' },
       React.createElement('span', null, fmt.numCompact(campaign.leadsLeft)),
-      React.createElement('span', { className: 'days' }, fmt.days(days))),
+      React.createElement('span', { className: 'days' }, fmt.days(days)),
+      danger && React.createElement('span', { className: 'danger-tag', title: 'Less than 3 days of leads remaining' }, '!')),
     React.createElement('div', { className: 'track' },
       React.createElement('div', { className: 'fill', style: { width: pct + '%' } })));
 }
@@ -99,10 +104,22 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags,
             group.campaigns.length + (group.campaigns.length === 1 ? ' campaign · ' : ' campaigns · ') +
             group.active + ' active' +
             (group.stale > 0 ? ' · ' + group.stale + ' idle' : '')))),
+      // Send rates per client: per-day comes from group.dailyRate (sum of
+      // per-campaign rates that already account for active days, so a freshly-
+      // started campaign isn't diluted across 7 days). Week and month are
+      // straight extrapolations of the daily rate.
       React.createElement('div', { className: 'stat' },
-        React.createElement('span', { className: 'l' }, 'Sends 7d'),
-        fmt.num(group.sends)),
+        React.createElement('span', { className: 'l' }, 'Sends / day'),
+        fmt.num(Math.round(group.dailyRate || 0))),
       React.createElement('div', { className: 'stat' },
+        React.createElement('span', { className: 'l' }, 'Sends / week'),
+        fmt.num(Math.round((group.dailyRate || 0) * 7))),
+      React.createElement('div', { className: 'stat' },
+        React.createElement('span', { className: 'l' }, 'Sends / month'),
+        fmt.numCompact(Math.round((group.dailyRate || 0) * 30.4375))),
+      // Reply rate: below 1% is flagged critical to surface dead campaigns at
+      // the client level. The `crit` class re-uses the existing red treatment.
+      React.createElement('div', { className: 'stat' + (group.replyRate !== null && group.replyRate < 0.01 ? ' crit' : '') },
         React.createElement('span', { className: 'l' }, 'Reply rate'),
         group.replyRate !== null ? (group.replyRate * 100).toFixed(2) + '%' : '—'),
       React.createElement('div', { className: 'stat' },
@@ -111,8 +128,6 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags,
       React.createElement('div', { className: 'stat' },
         React.createElement('span', { className: 'l' }, 'Leads left'),
         fmt.numCompact(group.leadsLeft)),
-      React.createElement('div', { className: 'stat-spark' },
-        React.createElement(Sparkline, { data: group.sparkline, sev: 0, accent: true, width: 100, height: 28 })),
       React.createElement('div', { className: 'pill-stack' },
         React.createElement('span', { className: 'flag-pill ' + flagPill.cls },
           React.createElement('span', { className: 'dot' }), flagPill.txt))),
@@ -125,8 +140,7 @@ function ClientGroup({ group, isOpen, onToggle, dayLabels, onDelete, onEditTags,
         React.createElement('span', null, 'Sends 7d'),
         React.createElement('span', null, 'Reply rate'),
         React.createElement('span', null, 'PRR'),
-        React.createElement('span', null, 'Runway'),
-        React.createElement('span', { className: 'right' }, 'Trend')),
+        React.createElement('span', null, 'Runway')),
       // Campaign rows
       group.campaigns.map((c) => React.createElement(CampaignRow, {
         key: c.id, campaign: c, onDelete,
@@ -187,15 +201,16 @@ function CampaignRow({ campaign: c, onDelete, onEditTags, onEditDailyTarget }) {
               : 'Click to set the configured Instantly daily target')
           : undefined,
       }, c.dailyRate > 0 ? Math.round(c.dailyRate) + '/day' : 'no sends')),
-    React.createElement('span', { className: 'stat-num' + (replyRate === null ? ' muted' : '') },
+    // Reply rate below 1% gets the same critical-red treatment as a failing
+    // PRR — flags campaigns whose messaging is dead before they burn more
+    // leads. Muted (—) when there's no replies data yet.
+    React.createElement('span', { className: 'stat-num ' + (replyRate === null ? 'muted' : (replyRate < 0.01 ? 'crit' : '')) },
       replyRate === null ? '—' : (replyRate * 100).toFixed(2) + '%',
       React.createElement('span', { className: 'sublabel' }, c.replies7d + ' replies')),
     React.createElement('span', { className: 'stat-num ' + (c.prrSev === 2 ? 'crit' : c.prrSev === 1 ? 'warn' : c.prr !== null ? '' : 'muted') },
       c.prr === null ? '—' : (c.prr * 100).toFixed(2) + '%',
       React.createElement('span', { className: 'sublabel' }, c.posReplies7d + ' positive')),
-    React.createElement(RunwayBar, { campaign: c }),
-    React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
-      React.createElement(Sparkline, { data: c.sparkline, sev: c.overall, width: 90, height: 26 }))
+    React.createElement(RunwayBar, { campaign: c })
   );
 }
 
