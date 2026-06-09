@@ -574,20 +574,23 @@ html, body { margin: 0; padding: 0; }
 }
 
 .csd-clientgroup-head .stat {
-  font-size: 13px;
+  font-family: var(--display);
+  font-size: 19px;
   font-feature-settings: 'tnum' 1, 'lnum' 1;
   color: var(--d-fg);
   font-weight: 600;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.018em;
+  line-height: 1.1;
 }
 .csd-clientgroup-head .stat .l {
   display: block;
+  font-family: var(--sans);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--d-fg-3);
   font-weight: 500;
-  margin-bottom: 3px;
+  margin-bottom: 5px;
 }
 .csd-clientgroup-head .stat.warn { color: var(--d-warning); }
 .csd-clientgroup-head .stat.crit { color: var(--d-critical); }
@@ -876,11 +879,16 @@ html, body { margin: 0; padding: 0; }
 }
 .csd-runway-bar .label {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   color: var(--d-fg-3);
   font-variant-numeric: tabular-nums;
 }
+/* Leads-left stays anchored left; days (+ optional danger badge) stay
+   anchored right as a tight group. Without margin-left:auto on .days the
+   danger badge would push it toward the middle of the bar. */
+.csd-runway-bar .label .days { margin-left: auto; }
 .csd-runway-bar .label .days { color: var(--d-fg); font-weight: 600; font-size: 12px; }
 .csd-runway-bar.sev-2 .label .days { color: var(--d-critical); }
 .csd-runway-bar.sev-1 .label .days { color: var(--d-warning); }
